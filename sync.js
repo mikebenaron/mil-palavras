@@ -101,6 +101,12 @@
   }
 
   function tsOf(x) { return (x && x._updatedAt) || 0; }
+  // Rough "how much progress" measure, used only to decide whether un-synced
+  // local data should seed an otherwise-empty account on first login.
+  function score(s) {
+    if (!s) return 0;
+    return (s.reviews || 0) + (s.prog ? Object.keys(s.prog).length : 0) + (s.streak || 0);
+  }
 
   // Reconcile this account's progress between the server and the local cache.
   function syncUserData() {
@@ -113,13 +119,18 @@
         var localIsThisUser = local && local._uid === U;
 
         if (remote) {
-          // Server has this account's data. Use it unless the local copy is
-          // this same user's and strictly newer (studied offline, then online).
-          if (localIsThisUser && tsOf(local) > tsOf(remote)) {
-            doPush(local);
+          if (localIsThisUser) {
+            // Same account already synced here — last-write-wins by timestamp.
+            if (tsOf(local) > tsOf(remote)) doPush(local);
+            else { remote._uid = U; applyState(remote); }
+          } else if (local && !local._uid && score(remote) === 0 && score(local) > 0) {
+            // First login on a device that has un-synced progress (e.g. from the
+            // original offline app), and the account's server row is still empty:
+            // seed the account from this device so that progress isn't lost.
+            local._uid = U; bridge.persist(); doPush(local);
           } else {
-            remote._uid = U;
-            applyState(remote);
+            // Server is authoritative for this account.
+            remote._uid = U; applyState(remote);
           }
         } else {
           // No server row yet for this account.
