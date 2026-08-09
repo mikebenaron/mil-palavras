@@ -1,6 +1,6 @@
 /* Mil Palavras service worker — offline app shell.
    Bump CACHE_VERSION whenever the app files change to force an update. */
-const CACHE_VERSION = 'mil-palavras-v16';
+const CACHE_VERSION = 'mil-palavras-v17';
 const APP_SHELL = [
   './',
   './index.html',

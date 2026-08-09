@@ -324,6 +324,17 @@ input{font-family:inherit;font-size:inherit;color:inherit;background:none;border
 .passage{margin-top:8px}
 .rline{padding:12px 0;border-bottom:1px solid var(--rule);cursor:pointer}
 .rline .rpt{font-family:var(--serif);font-size:20px;line-height:1.5;color:var(--ink)}
+.wtap{cursor:pointer;border-radius:2px}
+.wtap:active{background:oklch(55% .16 40 / .16)}
+@media(hover:hover){.wtap:hover{background:oklch(55% .16 40 / .10)}}
+.winfobar{position:fixed;left:0;right:0;bottom:0;z-index:60;background:var(--ink);color:var(--paper);
+  transform:translateY(110%);transition:transform .18s ease;padding-bottom:var(--safe-b);box-shadow:0 -8px 30px rgba(40,25,15,.25)}
+.winfobar.show{transform:translateY(0)}
+.wib-in{max-width:680px;margin:0 auto;padding:16px 22px 18px;position:relative}
+.wib-word{font-family:var(--serif);font-size:23px;line-height:1.1}
+.wib-tag{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--ochre);margin-top:5px}
+.wib-detail{font-size:14.5px;color:oklch(86% .02 80);margin-top:7px;line-height:1.45}
+.wib-x{position:absolute;top:10px;right:16px;font-size:24px;line-height:1;color:var(--paper);opacity:.65;padding:4px}
 .rline .ren{font-size:13px;color:var(--slate-en);line-height:1.5;margin-top:6px;max-height:0;overflow:hidden;opacity:0;transition:opacity .15s}
 .rline.show .ren{max-height:220px;opacity:1}
 @media(hover:hover){.rline:hover .rpt{color:var(--terracotta)}}
@@ -1578,7 +1589,8 @@ var app = document.getElementById("app");
 function motionOK(){
   try { return !window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch(e){ return true; }
 }
-function h(html){ app.className=""; app.removeAttribute("data-screen"); app.innerHTML = html; window.scrollTo(0,0); }
+function h(html){ app.className=""; app.removeAttribute("data-screen"); app.innerHTML = html; window.scrollTo(0,0);
+  var wb = document.getElementById("winfobar"); if (wb) wb.classList.remove("show"); }
 
 /* ---- progress + review-forecast data (for the home screen) ---- */
 /* Mastery over the ~1000 vocabulary words: known = interval >= 21 days. */
@@ -2582,6 +2594,67 @@ function renderReadingPicker(){
 
 function escapeRe(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
+/* ---- tap-a-word info: contractions, verb infinitives, word meanings ---- */
+var CONTRACTIONS = {
+  "ao":"a + o","à":"a + a","aos":"a + os","às":"a + as",
+  "do":"de + o","da":"de + a","dos":"de + os","das":"de + as",
+  "no":"em + o","na":"em + a","nos":"em + os","nas":"em + as",
+  "pelo":"por + o","pela":"por + a","pelos":"por + os","pelas":"por + as",
+  "num":"em + um","numa":"em + uma","nuns":"em + uns","numas":"em + umas",
+  "dum":"de + um","duma":"de + uma","duns":"de + uns","dumas":"de + umas",
+  "dele":"de + ele","dela":"de + ela","deles":"de + eles","delas":"de + elas",
+  "nele":"em + ele","nela":"em + ela","neles":"em + eles","nelas":"em + elas",
+  "deste":"de + este","desta":"de + esta","destes":"de + estes","destas":"de + estas",
+  "neste":"em + este","nesta":"em + esta","nestes":"em + estes","nestas":"em + estas",
+  "disto":"de + isto","disso":"de + isso","daquilo":"de + aquilo",
+  "nisto":"em + isto","nisso":"em + isso","naquilo":"em + aquilo",
+  "daquele":"de + aquele","daquela":"de + aquela","naquele":"em + aquele","naquela":"em + aquela",
+  "àquele":"a + aquele","àquela":"a + aquela","àquilo":"a + aquilo",
+  "comigo":"com + mim","contigo":"com + ti","connosco":"com + nós","convosco":"com + vós"
+};
+function cleanWord(s){ return String(s).toLowerCase().replace(/^[^a-zà-ÿ]+/,"").replace(/[^a-zà-ÿ-]+$/,""); }
+var _formMap = null, _vocabMap = null;
+function buildLookups(){
+  if (_formMap) return;
+  _formMap = {}; _vocabMap = {};
+  CARDS.forEach(function(c){
+    if (c.c === "conjugacao"){ var k = cleanWord(c.p); if (k && !_formMap[k]) _formMap[k] = { inf:c.v, e:(c.w && c.w.e) || "" }; }
+    else if (!c.k){
+      var base = cleanWord(stripArticle(c.p)), full = cleanWord(c.p);
+      if (base && !_vocabMap[base]) _vocabMap[base] = { p:c.p, e:c.e, ipa:c.ipa, cls:c.c };
+      if (full && !_vocabMap[full]) _vocabMap[full] = { p:c.p, e:c.e, ipa:c.ipa, cls:c.c };
+    }
+  });
+}
+function wordInfo(raw){
+  buildLookups();
+  var w = cleanWord(raw);
+  if (!w) return null;
+  if (CONTRACTIONS[w]) return { tag:"contração · contraction", word:raw, detail:CONTRACTIONS[w] };
+  if (_formMap[w]){ var f = _formMap[w]; return { tag:"verbo · verb", word:raw, detail:"infinitivo · infinitive: " + f.inf + (f.e ? " — " + f.e : "") }; }
+  if (_vocabMap[w]){ var v = _vocabMap[w]; return { tag:(CLASS_LABEL[v.cls] || "palavra") + " · " + (CLASS_EN[v.cls] || "word"), word:v.p, detail:v.e + (v.ipa ? " · " + v.ipa : "") }; }
+  return { tag:"", word:raw, detail:"sem informação · no info found" };
+}
+function tapWords(text){
+  return esc(text).replace(/([A-Za-zÀ-ÿ]+(?:-[A-Za-zÀ-ÿ]+)*)/g, function(m){
+    return '<span class="wtap" data-w="' + m + '">' + m + '</span>';
+  });
+}
+function showWordInfo(raw){
+  var info = wordInfo(raw); if (!info) return;
+  var bar = document.getElementById("winfobar");
+  if (!bar){
+    bar = document.createElement("div"); bar.id = "winfobar"; bar.className = "winfobar";
+    document.body.appendChild(bar);
+    bar.addEventListener("click", function(e){ if (e.target === bar || e.target.getAttribute("data-wclose") != null) bar.classList.remove("show"); });
+  }
+  bar.innerHTML = '<div class="wib-in"><button class="wib-x" data-wclose>×</button>' +
+    '<div class="wib-word">' + esc(info.word) + '</div>' +
+    (info.tag ? '<div class="wib-tag">' + esc(info.tag) + '</div>' : '') +
+    '<div class="wib-detail">' + esc(info.detail) + '</div></div>';
+  bar.classList.add("show");
+}
+
 function renderReading(id){
   var r = null; for (var i=0;i<READINGS.length;i++) if (READINGS[i].id === id) r = READINGS[i];
   if (!r) return renderReadingPicker();
@@ -2600,10 +2673,10 @@ function renderReading(id){
   var body;
   if (READMODE === "read") {
     body = '<div class="passage">' + r.lines.map(function(l, i){
-      return '<div class="rline" data-i="' + i + '"><div class="rpt">' + esc(l.pt) + '</div>' +
+      return '<div class="rline" data-i="' + i + '"><div class="rpt">' + tapWords(l.pt) + '</div>' +
         '<div class="ren">' + esc(l.en) + '</div></div>';
     }).join("") + '</div>' +
-    '<div class="pcap" style="margin-top:14px">Toca numa frase para ver a tradução. · Tap a sentence to reveal its translation.</div>' +
+    '<div class="pcap" style="margin-top:14px">Toca numa <b>palavra</b> para ver a informação; toca no <b>espaço</b> da frase para a tradução. · Tap a <b>word</b> for its info; tap the sentence for its translation.</div>' +
     '<button class="btn outline block" style="margin-top:16px" data-revealall="1">Revelar tudo · reveal all</button>';
   } else if (READMODE === "translate") {
     body = '<div class="passage">' + r.lines.map(function(l, i){
@@ -2666,6 +2739,7 @@ function renderReading(id){
 
   on("[data-rm]","click",function(e){ READMODE = e.currentTarget.getAttribute("data-rm"); renderReading(id); });
   on("[data-i]","click",function(e){ e.currentTarget.classList.toggle("show"); });
+  on("[data-w]","click",function(e){ e.stopPropagation(); showWordInfo(e.currentTarget.getAttribute("data-w")); });
   on("[data-revealall]","click",function(){
     var n = app.querySelectorAll(".rline"); for (var j=0;j<n.length;j++) n[j].classList.add("show");
   });
