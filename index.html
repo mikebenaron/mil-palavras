@@ -1442,7 +1442,7 @@ function renderDrillPicker(kind){
     return drow(g[0], lab, sub, g[1]);
   }).join("");
 
-  h(backLink() +
+  renderPage(isConj ? "conj" : "grammar",
     screenTitle(isConj ? "Conjugações" : "Gramática", isConj ? "conjugations" : "grammar") +
     screenIntro(
       isConj ? "Cada cartão é um verbo numa pessoa — com a tabela e a regra ao virar." : "Cada cartão é uma célula da tabela, testada em vez de lida.",
@@ -1457,7 +1457,8 @@ function renderDrillPicker(kind){
       extra + rows +
     '</div>' +
     '<div class="footer" style="margin-top:22px"><div class="fp">Entram no mesmo horário que as palavras.</div>' +
-    '<div class="fe">These sit in the same schedule as the words — anything you grade returns under Review on its own timetable.</div></div>');
+    '<div class="fe">These sit in the same schedule as the words — anything you grade returns under Review on its own timetable.</div></div>',
+    function(){ renderDrillPicker(kind); });
 
   on("[data-dm]", "click", function(e){ DMODE = e.currentTarget.getAttribute("data-dm"); renderDrillPicker(kind); });
   on("[data-drill]", "click", function(e){
@@ -1656,6 +1657,35 @@ function mbar(ptL, enL, start, tot, teal){
     '<span class="mv">'+start+'/'+tot+'</span></div>'+
     '<div class="mtk"><span style="width:'+pct+'%"></span></div></div>';
 }
+/* Web shell: the masthead + KPIs bar and the contents rail, wrapping a
+   screen's own content on wide viewports. On phone, a plain back link. */
+function webShell(activeNav, inner){
+  var due = dueList().length, learned = Object.keys(S.prog).length;
+  return '<div class="webhead">'+
+      '<div><div class="wm">Mil Palavras</div>'+
+        '<div class="we">Português europeu · caderno pessoal</div>'+
+        '<div class="wee">European Portuguese · personal notebook</div></div>'+
+      '<div class="webkpis">'+
+        '<div class="webkpi terra"><div class="n">'+due+'</div><div class="lp">por rever</div><div class="le">due for review</div></div>'+
+        '<div class="webkpi teal"><div class="n">'+(S.streak||0)+'</div><div class="lp">dias seguidos</div><div class="le">day streak</div></div>'+
+        '<div class="webkpi"><div class="n">'+learned+'</div><div class="lp">começadas</div><div class="le">words started</div></div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="webbody">'+
+      '<div class="rail"><div class="rhd">Índice · contents</div>'+railItems(activeNav)+'</div>'+
+      '<div class="dash">'+inner+'</div>'+
+    '</div>';
+}
+/* Render a navigable "page" screen, responsive: web shell (rail) or phone
+   (back link). Remembers itself so a breakpoint change re-renders it. */
+var LAST_RENDER = null;
+function renderPage(activeNav, inner, self, backNav, backLabel){
+  var web = window.innerWidth >= 760;
+  h(web ? webShell(activeNav, inner) : backLink(backNav || "home", backLabel) + inner);
+  if (web) app.classList.add("web");
+  app.setAttribute("data-screen", "page");
+  LAST_RENDER = self || null;
+}
 function renderHomeWeb(){
   var due = dueList().length;
   var allowance = Math.min(newAllowance(), newPool().length);
@@ -1775,7 +1805,7 @@ function renderDeckPicker(mode){
   }).join("");
   var started = Object.keys(S.prog).length;
   var weak = CARDS.filter(function(c){ return (S.prog[c.i]||{}).l >= 3; }).length;
-  h(backLink() + screenTitle(ml[0], ml[1]) +
+  renderPage(mode, screenTitle(ml[0], ml[1]) +
     screenIntro("Escolhe um conjunto para trabalhar.", "Pick a set to work through.") +
     '<div class="booklist">' +
       bookRow("data-deck","__random","Mistura aleatória","random mix","tudo, sem ordem · anything, no order", CARDS.length) +
@@ -1783,7 +1813,7 @@ function renderDeckPicker(mode){
       bookRow("data-deck","__weak","Palavras difíceis","trouble words","as que falhas · the ones you keep missing", weak) +
       bookRow("data-deck","__all","Tudo","everything","palavras, verbos e gramática · words, verbs, grammar", CARDS.length) +
       classRows +
-    '</div>');
+    '</div>', function(){ renderDeckPicker(mode); });
   bindNav();
   on("[data-deck]", "click", function(e){
     var d = e.currentTarget.getAttribute("data-deck"), pool, rnd = false;
@@ -2221,11 +2251,11 @@ function renderBrowse(){
     body = shown.map(entry).join("");
   }
   var mag = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="8.5" cy="8.5" r="5.3"/><path d="M12.5 12.5L17 17"/></svg>';
-  h(backLink() + screenTitle("Dicionário", "dictionary") +
+  renderPage("browse", screenTitle("Dicionário", "dictionary") +
     '<div class="searchrow">' + mag + '<input id="q" placeholder="Procurar entre ' + CARDS.length + ' entradas · search" value="' + esc(bq) + '" ' +
       'autocapitalize="none" autocorrect="off" spellcheck="false"></div>' +
     '<div class="classfilter">' + cf + '</div>' +
-    (body || '<p style="color:var(--slate);font-size:14px;padding:22px 0">Sem resultados · no match.</p>'));
+    (body || '<p style="color:var(--slate);font-size:14px;padding:22px 0">Sem resultados · no match.</p>'), renderBrowse);
   var qi = document.getElementById("q");
   qi.addEventListener("input", function(){
     bq = qi.value; var pos = qi.selectionStart;
@@ -2301,10 +2331,10 @@ function renderGrammar(){
     var t = TOPICS[k];
     return bookRow("data-topic", k, t.title, t.titleE, t.sub, t.n);
   }).join("");
-  h(backLink() + screenTitle("Gramática", "grammar") +
+  renderPage("grammar", screenTitle("Gramática", "grammar") +
     screenIntro("As regras que aparecem em cada frase — lê-as, depois testa-as.",
                 "The rules that turn up in every sentence — read them, then be tested.") +
-    '<div class="booklist">' + rows + '</div>');
+    '<div class="booklist">' + rows + '</div>', renderGrammar);
   on("[data-topic]","click",function(e){ renderTopic(e.currentTarget.getAttribute("data-topic")); });
   bindNav();
 }
@@ -2318,13 +2348,14 @@ function renderTopic(id){
       r.cells.map(function(cell){ return '<span class="gtcell">' + esc(cell) + '</span>'; }).join("") + '</div>';
   }).join("");
   var n = grammarDrillPool(id).length;
-  h(backLink("grammar", "Gramática · grammar") +
+  renderPage("grammar",
     screenTitle(t.title, t.titleE) +
     screenIntro(t.intro, t.introE) +
     '<div class="gtable">' + header + body + '</div>' +
     '<div class="footnote" style="margin-top:20px"><div class="np">' + esc(t.note) + '</div>' +
       '<div class="ne">' + esc(t.noteE) + '</div></div>' +
-    (n ? '<button class="btn outline block" style="margin-top:20px" data-testtopic="' + esc(id) + '">Testar isto · test this · ' + n + ' cartões</button>' : ''));
+    (n ? '<button class="btn outline block" style="margin-top:20px" data-testtopic="' + esc(id) + '">Testar isto · test this · ' + n + ' cartões</button>' : ''),
+    function(){ renderTopic(id); }, "grammar", "Gramática · grammar");
   on("[data-testtopic]","click",function(e){ startDrill(grammarDrillPool(e.currentTarget.getAttribute("data-testtopic"))); });
   bindNav();
 }
@@ -2387,9 +2418,9 @@ function renderMethod(){
       '<div class="mt">' + esc(m.t) + '</div><div class="mte">' + esc(m.tE) + '</div>' +
       '<div class="mb">' + esc(m.b) + '</div><div class="mbe">' + esc(m.bE) + '</div></div></div>';
   }).join("");
-  h(backLink() + screenTitle("Método", "method") +
+  renderPage("method", screenTitle("Método", "method") +
     screenIntro("Seis hábitos que fazem tudo isto pegar.", "Six habits that make it stick.") +
-    '<div style="margin-top:6px">' + body + '</div>');
+    '<div style="margin-top:6px">' + body + '</div>', renderMethod);
   bindNav();
 }
 
@@ -2408,7 +2439,7 @@ function renderSettings(){
 
   var tipsOn = S.set.tips !== false, audioOn = S.set.audio !== false;
 
-  h(backLink() + screenTitle("Definições", "settings") +
+  renderPage("settings", screenTitle("Definições", "settings") +
 
     '<div class="field"><div class="fl">Palavras novas por dia</div><div class="fle">new words per day</div>' +
     '<div class="fh">Quantas palavras novas entram em rotação por dia.</div>' +
@@ -2456,7 +2487,7 @@ function renderSettings(){
       '<button class="btn outline block" data-act="resetleech">Repor difíceis · reset trouble words</button>' +
       '<button class="btn outline block" style="color:var(--vinho);box-shadow:inset 0 0 0 1.4px var(--vinho)" data-act="wipe">Apagar tudo · erase all progress</button>' +
     '</div>' +
-    '<div id="io"></div>');
+    '<div id="io"></div>', renderSettings);
 
   on("[data-per]","click",function(e){
     var dlt = +e.currentTarget.getAttribute("data-per");
@@ -2524,12 +2555,18 @@ document.addEventListener("keydown", function(e){
   }
 });
 
-/* Re-render Home when the viewport crosses the phone/web breakpoint. */
-var _homeRz;
+/* Re-render the current screen when the viewport crosses the phone/web
+   breakpoint, so it swaps between the phone layout and the web shell. */
+var _rzT, _wasWide = window.innerWidth >= 760;
 window.addEventListener("resize", function(){
-  clearTimeout(_homeRz);
-  _homeRz = setTimeout(function(){
-    if (app.getAttribute("data-screen") === "home") renderHome();
+  clearTimeout(_rzT);
+  _rzT = setTimeout(function(){
+    var wide = window.innerWidth >= 760;
+    if (wide === _wasWide) return;
+    _wasWide = wide;
+    var scr = app.getAttribute("data-screen");
+    if (scr === "home") renderHome();
+    else if (scr === "page" && LAST_RENDER) LAST_RENDER();
   }, 150);
 });
 
@@ -2569,6 +2606,9 @@ function attachSync(){
 }
 function startApp(){
   var attached = attachSync();
+  // Dev-only: skip the auth gate on localhost (never runs on the real domain).
+  if ((location.hostname === "localhost" || location.hostname === "127.0.0.1") &&
+      location.search.indexOf("dev=1") > -1) { renderHome(); return; }
   if (attached && window.MilSync.gate) window.MilSync.gate();
   else renderHome();   // fallback if the account layer failed to load
 }
