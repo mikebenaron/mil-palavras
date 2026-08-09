@@ -160,11 +160,13 @@ input{font-family:inherit;font-size:inherit;color:inherit;background:none;border
 
 /* ---------- review / card face on paper ---------- */
 .cardface{text-align:center;padding:28px 4px 8px}
-.cardface .klass{font-size:9px;letter-spacing:.2em;text-transform:uppercase;font-weight:700;color:var(--slate);margin-bottom:16px}
+.cardface .klass{font-size:9px;letter-spacing:.2em;text-transform:uppercase;font-weight:700;color:var(--teal);margin-bottom:16px}
 .cardface .word{font-family:var(--serif);font-size:46px;line-height:1.05;color:var(--ink)}
 .cardface .ipa{font-family:var(--mono);font-size:11.5px;color:var(--slate);margin-top:14px}
 .cardface .hr{height:0;border-top:1px solid var(--rule);width:60%;margin:22px auto}
 .cardface .answer{font-family:var(--serif);font-size:28px;color:var(--terracotta);line-height:1.15}
+.cardtap{display:block;width:100%;text-align:center;padding:0}
+.tap-reveal{font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:oklch(65% .02 50);margin-top:26px}
 
 /* note + footnote cards */
 .note{background:var(--card);box-shadow:inset 0 0 0 1px oklch(23% .025 45 / .12);padding:15px 16px;margin-top:14px}
@@ -517,6 +519,10 @@ function previewIv(id, g){
 }
 
 function esc(s){ return String(s).replace(/[&<>"]/g, function(m){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]; }); }
+function pad2(n){ n = n|0; return (n < 10 ? "0" : "") + n; }
+function chevL(){ return '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3L5 8l5 5"/></svg>'; }
+/* back link to Home in the book style */
+function backLink(){ return '<button class="backlink" data-nav="home">' + chevL() + 'Início · home</button>'; }
 
 /* ============================ speech ============================ */
 /* Uses the voice already installed on the device, so it works with no connection.
@@ -1714,6 +1720,10 @@ function go(n){
 
 /* ============================ deck picker ============================ */
 var MODE_TITLE = { flash:"Flashcards", choice:"Multiple choice", type:"Type it", gender:"o or a?", review:"Review" };
+var MODE_LABEL = {
+  review:["Rever","review"], flash:["Cartões","flashcards"], choice:["Escolha","multiple choice"],
+  type:["Escrever","type it"], gender:["O ou A?","noun gender"]
+};
 function renderDeckPicker(mode){
   var rows = CLASS_ORDER.map(function(k){
     var n = CARDS.filter(function(c){ return c.c === k; }).length;
@@ -1815,13 +1825,12 @@ function renderSession(){
   SES.dir = SES.dir_locked || sessionDir(c);
   var pct = SES.total ? Math.round(SES.done / SES.total * 100) : 0;
 
+  var ml = MODE_LABEL[SES.mode] || [MODE_TITLE[SES.mode] || "", ""];
   var head =
-    '<div class="top" style="margin-bottom:10px"><button class="back" data-end="1">' +
-    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4l8 8M12 4l-8 8"/></svg>' +
-    'End</button><div class="eyebrow" style="padding-top:9px">' + esc(MODE_TITLE[SES.mode]) + '</div></div>' +
-    '<div class="progress"><i style="width:' + pct + '%"></i></div>' +
-    '<div class="meta"><span class="num">' + SES.done + ' / ' + SES.total + '</span>' +
-    '<span class="num">' + (SES.right) + ' right</span></div>';
+    '<button class="backlink" data-end="1">' + chevL() + 'Início · home</button>' +
+    '<div class="progresshead"><span class="pl">' + esc(ml[0]) + ' · ' + esc(ml[1]) + '</span>' +
+      '<span class="pc">' + pad2(SES.done) + ' / ' + pad2(SES.total) + '</span></div>' +
+    '<div class="track"><span style="width:' + pct + '%"></span></div>';
 
   if (SES.mode === "choice") return renderChoice(head, c);
   if (SES.mode === "type") return renderType(head, c);
@@ -1832,63 +1841,69 @@ function renderSession(){
 /* ---- flip (review + flashcards) ---- */
 function renderFlip(head, c){
   var dir = SES.dir;
-  var front = dir === "pt" ? variants(c.p)[0] : c.e;
-  var back  = dir === "pt" ? c.e : c.p;
-  if (c.k) { front = c.q; back = c.p; }
+  var isDrill = !!c.k;
+  var ptText = variants(c.p)[0];
+  var front, back, frontIsPt, backIsPt;
+  if (isDrill) { front = c.q; back = c.p; frontIsPt = false; backIsPt = true; }
+  else if (dir === "pt") { front = ptText; back = c.e; frontIsPt = true; backIsPt = false; }
+  else { front = c.e; back = ptText; frontIsPt = false; backIsPt = true; }
   var isNew = !S.prog[c.i];
-  var frontCls = dir === "pt" ? "word" : "word en";
-  var backCls  = dir === "pt" ? "word en" : "word";
-  var sub = c.s ? '<div class="word-sub">' + esc(c.s) + '</div>' : "";
-  var klass = c.k ? c.s : CLASS_LABEL[c.c];
-  var cap = c.k ? '<div class="word-sub">' + esc(c.qs) + '</div>' : "";
+  var klass = isDrill ? c.s : CLASS_LABEL[c.c];
+  var frontIpa = (frontIsPt && c.ipa) ? c.ipa : "";
+  var backIpa = (backIsPt && c.ipa) ? c.ipa : "";
+
+  var faceInner =
+    '<div class="klass">' + esc(klass) + (isNew ? " · nova" : "") + '</div>' +
+    '<div class="word">' + esc(front) + '</div>' +
+    (frontIpa ? '<div class="ipa">' + esc(frontIpa) + '</div>' : '') +
+    (isDrill && c.qs ? '<div class="ipa">' + esc(c.qs) + '</div>' : '') +
+    (SES.shown
+      ? '<div class="hr"></div><div class="answer">' + esc(back) + '</div>' +
+        (backIpa ? '<div class="ipa">' + esc(backIpa) + '</div>' : '')
+      : '<div class="tap-reveal">toque para revelar · tap to reveal</div>');
+
+  var notes = "";
+  if (SES.shown) {
+    if (c.ex) notes += '<div class="note"><div class="nl">Numa frase · in a sentence</div>' +
+      '<div class="np">' + esc(c.ex) + '</div>' + (c.exE ? '<div class="ne">' + esc(c.exE) + '</div>' : '') + '</div>';
+    if (c.note) notes += '<div class="footnote"><div class="np">' + esc(c.note) + '</div>' +
+      (c.noteE ? '<div class="ne">' + esc(c.noteE) + '</div>' : '') + '</div>';
+  }
 
   var grades = SES.mode === "review"
-    ? '<div class="grade">' +
-        gbtn(1,"Again","again",c.i) + gbtn(2,"Hard","hard",c.i) +
-        gbtn(3,"Good","good",c.i) + gbtn(4,"Easy","easy",c.i) +
-      '</div>'
-    : '<div class="grade" style="grid-template-columns:1fr 1fr"><button class="g again" data-adv="1"><b>Still learning</b></button>' +
-      '<button class="g good" data-adv="1"><b>Got it</b></button></div>';
+    ? '<div class="grades">' +
+        gbtn(1,"Outra","again",c.i) + gbtn(2,"Difícil","hard",c.i) +
+        gbtn(3,"Bom","good",c.i) + gbtn(4,"Fácil","easy",c.i) + '</div>'
+    : '<div class="grades" style="grid-template-columns:1fr 1fr">' +
+        '<button class="grade again" data-adv="1"><span class="gl">Ainda aprendo</span><span class="gi">still learning</span></button>' +
+        '<button class="grade good" data-adv="1"><span class="gl">Já sei</span><span class="gi">got it</span></button></div>';
 
-  var tips = SES.shown ? tipsFor(c) : "";
-  h(head + '<div class="sess">' +
-    '<div class="cardwrap' + (tips ? " sm" : "") + '">' +
-    '<div class="flipper' + (SES.shown ? " flip" : "") + '" id="cd">' +
-      '<div class="face tile">' + tileFrame() +
-        '<div class="klass">' + esc(klass) + (isNew ? " · new" : "") + '</div>' +
-        '<div><div class="' + frontCls + '">' + esc(front) + '</div>' + (c.k ? cap : (dir === "pt" ? sub : "")) + '</div>' +
-        '<div class="tap-hint">tap to reveal</div>' +
-      '</div>' +
-      '<div class="face b tile">' + tileFrame() +
-        '<div class="klass">' + esc(klass) + '</div>' +
-        '<div><div class="' + backCls + '">' + esc(back) + '</div>' + (c.k ? cap : sub) + '</div>' +
-        '<div class="tap-hint"></div>' +
-      '</div>' +
-    '</div>' + sayBtn(c.p) + '</div>' + tips +
-    '<div class="ctl">' +
-    (SES.shown ? grades : '<button class="btn" data-show="1">Show answer</button>') +
-    '</div></div>');
+  h(head +
+    '<button class="cardtap" id="cd">' +
+      '<div class="cardface' + (SES.shown ? " fade-in" : "") + '">' + faceInner + '</div>' +
+    '</button>' +
+    sayLine(c) + notes +
+    (SES.shown ? grades : '<button class="btn fill block" style="margin-top:22px" data-show="1">Mostrar resposta · show answer</button>'));
 
   var cd = document.getElementById("cd");
-  function reveal(){
-    if (SES.shown) return;
-    SES.shown = true;
-    autoSay(c.p);
-    if (cd) cd.classList.add("flip");
-    setTimeout(renderSession, motionOK() ? 300 : 0);
-  }
+  function reveal(){ if (SES.shown) return; SES.shown = true; renderSession(); autoSay(c.p); }
   cd.addEventListener("click", reveal);
   on("[data-show]","click", reveal);
   bindSay();
-  on("[data-grade]","click",function(e){
-    var g = +e.currentTarget.getAttribute("data-grade");
-    applyGrade(c, g);
-  });
+  on("[data-grade]","click",function(e){ applyGrade(c, +e.currentTarget.getAttribute("data-grade")); });
   on("[data-adv]","click",function(){ SES.done++; SES.i++; SES.shown = false; renderSession(); });
   bindEnd();
 }
 function gbtn(g, lab, cls, id){
-  return '<button class="g ' + cls + '" data-grade="' + g + '"><b>' + lab + '</b><s>' + previewIv(id, g) + '</s></button>';
+  return '<button class="grade ' + cls + '" data-grade="' + g + '"><span class="gl">' + lab +
+    '</span><span class="gi">' + previewIv(id, g) + '</span></button>';
+}
+/* small "ouvir · listen" audio trigger, shown once the card is revealed */
+function sayLine(c){
+  if (!SES.shown || !Speech.supported()) return "";
+  return '<div style="text-align:center;margin-top:8px"><button class="txtbtn" data-say="' + esc(c.p) + '">' +
+    '<svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M4 7.5h2.5L10 4.5v11L6.5 12.5H4z" fill="currentColor" stroke="none"/><path d="M13 7.4a3.6 3.6 0 010 5.2"/></svg>ouvir · listen</button></div>';
 }
 function applyGrade(c, g){
   grade(c.i, g);
