@@ -7,3 +7,4 @@ tools/voice-test/out/
 # Never commit provider keys.
 .env
 .env.*
+tools/audio/quality/

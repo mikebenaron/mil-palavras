@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mil Palavras — audio quality</title>
+<style>
+  :root{--paper:#F6F0E4;--ink:#241A14;--slate:#6B5F55;--terra:#B4552D;--rule:#DAD1C0}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:28px 20px 60px}
+  .wrap{max-width:820px;margin:0 auto}
+  h1{font:italic 32px/1.15 Georgia,serif;margin:0 0 8px}
+  .lede{color:var(--slate);max-width:66ch;margin:0 0 20px}
+  .speed{display:flex;gap:8px;align-items:center;margin:0 0 22px;padding:14px;border:1px solid var(--rule);background:#FCFBF8}
+  .speed button{font:inherit;cursor:pointer;border:1px solid var(--ink);background:transparent;padding:7px 14px}
+  .speed button.on{background:var(--ink);color:var(--paper)}
+  .line{font:20px/1.4 Georgia,serif;margin:26px 0 10px;padding-top:18px;border-top:1px solid var(--rule)}
+  .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+  .lab{width:210px;font-size:12.5px;color:var(--slate)}
+  .lab b{color:var(--ink);display:block;font-size:13.5px}
+  audio{height:34px;flex:1;min-width:230px}
+  .note{margin-top:30px;padding:16px;border:1px solid var(--terra);color:var(--terra);font-size:13.5px;line-height:1.6}
+  .err{padding:16px;border:1px solid var(--terra);color:var(--terra)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Why does it sound scratchy?</h1>
+  <p class="lede">Two suspects. <b>Format</b>: everything so far is 24kHz/48kbps, which cuts off above
+    ~12kHz — exactly where Portuguese <i>sh</i> sounds live. <b>Time-stretch</b>: the Normal speed
+    setting plays at 0.85×, and stretching compressed audio adds warble.
+    Toggle the speed below to hear which one is doing the damage.</p>
+
+  <div class="speed">
+    <span style="font-size:13px;color:var(--slate)">Playback speed:</span>
+    <button data-rate="1" class="on">1.0× native</button>
+    <button data-rate="0.85">0.85× Normal</button>
+    <button data-rate="0.7">0.7× Lento</button>
+  </div>
+
+  <div id="list"></div>
+
+  <div class="note" id="sizes"></div>
+</div>
+
+<script>
+let man = null;
+fetch("quality/manifest.json").then(r => { if(!r.ok) throw 0; return r.json(); })
+  .then(m => { man = m; render(); })
+  .catch(() => {
+    document.getElementById("list").innerHTML =
+      '<div class="err"><b>Not generated yet.</b><br>Run <code>node tools/audio/quality-test.mjs</code></div>';
+  });
+
+function render(){
+  document.getElementById("list").innerHTML = man.lines.map(l => `
+    <div class="line">${esc(l.text)}</div>
+    ${man.formats.map(f => `
+      <div class="row">
+        <span class="lab"><b>${esc(f.id)}</b>${esc(f.label)}</span>
+        <audio controls preload="none" src="quality/${f.id}__${l.id}.mp3"></audio>
+      </div>`).join("")}
+  `).join("");
+
+  const est = (b) => ((b / man.lines.length) / 3.5) * (990*1.5 + 517*3.5) / 1024 / 1024;
+  document.getElementById("sizes").innerHTML =
+    "<b>Whole-library size at each setting</b><br>" +
+    man.formats.map(f => `${f.id} — ${esc(f.label)} → <b>~${est(man.bytes[f.id]).toFixed(0)} MB</b>`).join("<br>");
+  setRate(1);
+}
+
+function setRate(r){
+  document.querySelectorAll("audio").forEach(a => {
+    a.playbackRate = r;
+    if ("preservesPitch" in a) a.preservesPitch = true;
+    a.webkitPreservesPitch = true;
+  });
+  document.querySelectorAll(".speed button").forEach(b =>
+    b.classList.toggle("on", Number(b.dataset.rate) === r));
+}
+document.querySelector(".speed").addEventListener("click", e => {
+  const b = e.target.closest("button[data-rate]");
+  if (b) setRate(Number(b.dataset.rate));
+});
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+</script>
+</body>
+</html>

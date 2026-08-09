@@ -324,6 +324,12 @@ input{font-family:inherit;font-size:inherit;color:inherit;background:none;border
 .passage{margin-top:8px}
 .rline{padding:12px 0;border-bottom:1px solid var(--rule);cursor:pointer}
 .rline .rpt{font-family:var(--serif);font-size:20px;line-height:1.5;color:var(--ink)}
+/* the line currently being read aloud */
+.rline.reading{background:oklch(93% .04 85);box-shadow:inset 3px 0 0 var(--terracotta)}
+.rline.reading .rpt{color:var(--ink)}
+[data-listen] .lbl-stop{display:none}
+[data-listen].on .lbl-stop{display:inline}
+[data-listen].on .lbl-play{display:none}
 .legal p{font-size:14.5px;line-height:1.6;color:var(--ink);margin:0 0 13px;max-width:62ch}
 .legal p.en{color:var(--slate);font-size:13.5px;margin-top:-8px}
 .legal h2{font-family:var(--serif);font-size:21px;font-weight:400;margin:28px 0 10px;color:var(--ink)}
@@ -793,9 +799,74 @@ var Recorded = (function(){
 
   return {
     play: play,
+    srcFor: function(text){ index(); return (byText && byText[norm(text)]) || null; },
+    speed: speedFor,
     ready: function(){ index(); return !!(byText && Object.keys(byText).length); },
     count: function(){ index(); return byText ? Object.keys(byText).length : 0; },
     voice: function(){ return manifest ? manifest.voice : null; }
+  };
+})();
+
+/* Reads a passage line by line, highlighting each as it is spoken. Only offered
+   when every line of that passage has a recorded clip — a story that stops
+   halfway, or lurches into a robot voice mid-sentence, is worse than no button
+   at all. */
+var ReadAloud = (function(){
+  var playing = null, audio = null;
+
+  function clips(r){
+    if (!r || !r.lines || !Recorded.ready()) return null;
+    var out = [];
+    for (var i=0;i<r.lines.length;i++){
+      var src = Recorded.srcFor(r.lines[i].pt);
+      if (!src) return null;              // all or nothing
+      out.push(src);
+    }
+    return out;
+  }
+  function available(r){ return !!clips(r); }
+
+  function stop(){
+    if (audio){ try { audio.pause(); } catch(e){} audio = null; }
+    playing = null;
+    var b = app.querySelector("[data-listen]"); if (b) b.classList.remove("on");
+    var n = app.querySelectorAll(".rline.reading");
+    for (var i=0;i<n.length;i++) n[i].classList.remove("reading");
+  }
+  function start(r){
+    var srcs = clips(r);
+    if (!srcs) return;
+    stop();
+    playing = { srcs:srcs, i:0 };
+    var b = app.querySelector("[data-listen]"); if (b) b.classList.add("on");
+    step();
+  }
+  function step(){
+    if (!playing) return;
+    if (playing.i >= playing.srcs.length) return stop();
+    var idx = playing.i;
+    var line = app.querySelector('.rline[data-i="' + idx + '"]');
+    var prev = app.querySelector(".rline.reading");
+    if (prev) prev.classList.remove("reading");
+    if (line){
+      line.classList.add("reading");
+      // keep the spoken line in view without yanking the page around
+      try { line.scrollIntoView({ block:"center", behavior: motionOK() ? "smooth" : "auto" }); } catch(e){}
+    }
+    audio = new Audio(playing.srcs[idx]);
+    audio.playbackRate = Recorded.speed();
+    if ("preservesPitch" in audio) audio.preservesPitch = true;
+    audio.webkitPreservesPitch = true;
+    audio.onended = function(){ if (playing){ playing.i++; setTimeout(step, 320); } };
+    audio.onerror = function(){ stop(); toast("Áudio indisponível · audio unavailable"); };
+    var p = audio.play();
+    if (p && p.catch) p.catch(function(){ stop(); });
+  }
+  return {
+    available: available,
+    toggle: function(r){ if (playing) stop(); else start(r); },
+    stop: stop,
+    isPlaying: function(){ return !!playing; }
   };
 })();
 
@@ -1757,7 +1828,11 @@ function markEnglish(root){
   var n = root.querySelectorAll(EN_SEL);
   for (var i=0;i<n.length;i++) n[i].setAttribute("lang","en");
 }
-function h(html){ app.className=""; app.removeAttribute("data-screen"); app.innerHTML = html; window.scrollTo(0,0);
+function h(html){
+  // Leaving the screen must stop the narration — otherwise a story keeps
+  // reading from a page that is no longer there.
+  if (typeof ReadAloud !== "undefined" && ReadAloud.isPlaying()) ReadAloud.stop();
+  app.className=""; app.removeAttribute("data-screen"); app.innerHTML = html; window.scrollTo(0,0);
   markEnglish(app);
   var wb = document.getElementById("winfobar"); if (wb) wb.classList.remove("show"); }
 
@@ -2895,7 +2970,11 @@ function renderReading(id){
         '<div class="ren">' + esc(l.en) + '</div></div>';
     }).join("") + '</div>' +
     '<div class="pcap" style="margin-top:14px">Toca numa <b>palavra</b> para ver a informação; toca no <b>espaço</b> da frase para a tradução. · Tap a <b>word</b> for its info; tap the sentence for its translation.</div>' +
-    '<button class="btn outline block" style="margin-top:16px" data-revealall="1">Revelar tudo · reveal all</button>';
+    (ReadAloud.available(r)
+      ? '<button class="btn outline block" style="margin-top:16px" data-listen="1">' +
+        '<span class="lbl-play">Ouvir a história · listen</span>' +
+        '<span class="lbl-stop">Parar · stop</span></button>' : '') +
+    '<button class="btn outline block" style="margin-top:10px" data-revealall="1">Revelar tudo · reveal all</button>';
   } else if (READMODE === "translate") {
     body = '<div class="passage">' + r.lines.map(function(l, i){
       return '<div class="rline tmode" data-i="' + i + '"><div class="ten">' + esc(l.en) + '</div>' +
@@ -2963,6 +3042,7 @@ function renderReading(id){
     e.currentTarget.classList.toggle("show");
   });
   on("[data-w]","click",function(e){ e.stopPropagation(); showWordInfo(e.currentTarget.getAttribute("data-w")); });
+  on("[data-listen]","click",function(){ ReadAloud.toggle(r); });
   on("[data-revealall]","click",function(){
     var n = app.querySelectorAll(".rline"); for (var j=0;j<n.length;j++) n[j].classList.add("show");
   });
