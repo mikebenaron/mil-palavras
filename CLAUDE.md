@@ -186,6 +186,25 @@ score returns, and that no recording is kept. **If that data flow ever changes,
 the notice must change with it** — the same applies to the conversation
 partner (#20), which would break the "nothing leaves your device" line.
 
+## Daily text (#18)
+
+`supabase/functions/daily-text` writes one EU-PT passage around the words the
+scheduler says are due, via Claude. The key stays server-side; the browser
+sends **only the word list and a CEFR level** — no email, no progress, nothing
+identifying. Generated once per day and cached in `S.daily`, so re-opening is
+free and it works offline afterwards.
+
+The function **validates before returning**: Brazilian markers, missing
+fields, gaps that aren't verbatim in the text, answer indices out of range. A
+passage that fails is rejected rather than shown — better no text than
+Brazilian text. Always returned with `ai:true`, so the ✳ mark shows.
+
+Rendered by pushing the passage into `READINGS` and calling `renderReading`,
+so it inherits tap-a-word, cloze, translate and comprehension for free.
+
+The privacy notice discloses this data flow. **If what gets sent ever changes,
+the notice changes with it.**
+
 ## Outstanding (needs the user, not code)
 
 - `ola@milpalavras.app` is published in the privacy/terms pages but **does not
@@ -195,3 +214,6 @@ partner (#20), which would break the "nothing leaves your device" line.
 - `supabase secrets set AZURE_SPEECH_KEY=... AZURE_SPEECH_REGION=uksouth` then
   `supabase functions deploy speech-token` — until deployed, Falar shows
   "assessment isn't switched on yet" instead of scoring.
+- `supabase secrets set ANTHROPIC_API_KEY=...` then
+  `supabase functions deploy daily-text` — until deployed, the daily text
+  button reports that the key isn't set.
