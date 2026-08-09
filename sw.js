@@ -1,6 +1,6 @@
 /* Mil Palavras service worker — offline app shell.
    Bump CACHE_VERSION whenever the app files change to force an update. */
-const CACHE_VERSION = 'mil-palavras-v3';
+const CACHE_VERSION = 'mil-palavras-v4';
 const APP_SHELL = [
   './',
   './index.html',
@@ -11,8 +11,10 @@ const APP_SHELL = [
   './apple-touch-icon.png',
   './vendor/supabase.js',
   './sync-config.js',
-  './sync.js'
+  './sync.js',
+  './fonts.css'
 ];
+// Font woff2 files are cached on demand by the fetch handler (cache-first).
 
 // Pre-cache the app shell on install.
 self.addEventListener('install', (event) => {

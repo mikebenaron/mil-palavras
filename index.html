@@ -289,6 +289,60 @@ input{font-family:inherit;font-size:inherit;color:inherit;background:none;border
 .mt{margin-top:12px}
 .quiet{box-shadow:inset 0 0 0 1px var(--rule-3);color:var(--ink);background:none}
 
+/* ============ web dashboard (wide screens) ============ */
+#app.web{max-width:1120px;padding:calc(var(--safe-t) + 34px) 44px 60px}
+.webhead{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;
+  border-bottom:2px solid var(--ink);padding-bottom:16px;margin-bottom:30px;flex-wrap:wrap}
+.webhead .wm{font-family:var(--serif);font-style:italic;font-size:30px;color:var(--ink);line-height:1}
+.webhead .we{font-size:9px;letter-spacing:.26em;text-transform:uppercase;color:var(--terracotta);font-weight:700;margin-top:8px}
+.webhead .wee{font-size:11.5px;color:var(--slate-en);margin-top:4px}
+.webkpis{display:flex;gap:38px;align-items:baseline;flex:none}
+.webkpi{text-align:right}
+.webkpi .n{font-family:var(--serif);font-size:24px;line-height:1;color:var(--ink)}
+.webkpi.terra .n{color:var(--terracotta)}.webkpi.teal .n{color:var(--teal)}
+.webkpi .lp{font-size:8.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--slate);margin-top:5px;white-space:nowrap}
+.webkpi .le{font-size:10.5px;color:var(--slate-en);margin-top:3px;white-space:nowrap}
+.webbody{display:flex;gap:44px;align-items:flex-start}
+.rail{width:172px;flex:none;position:sticky;top:20px}
+.rail .rhd{font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--slate);font-weight:700;margin-bottom:10px}
+.rail button{display:block;width:100%;padding:9px 0;font-family:var(--serif);font-size:14px;color:oklch(30% .02 45)}
+.rail button.on{color:var(--terracotta);font-weight:500}
+.rail button .rle{display:block;font-family:var(--sans);font-size:10.5px;color:var(--slate-en);margin-top:1px}
+@media(hover:hover){.rail button:hover{color:var(--ink)}.rail button.on:hover{color:var(--terracotta)}}
+.rail .quote{margin-top:22px;padding-top:16px;border-top:1px solid var(--rule-3)}
+.rail .quote .qp{font-family:var(--serif);font-style:italic;font-size:14px;line-height:1.6;color:var(--slate)}
+.rail .quote .qe{font-size:11.5px;line-height:1.6;color:var(--slate-en);margin-top:5px}
+.dash{flex:1;min-width:0}
+.dashrow{display:flex;gap:36px;align-items:flex-start;flex-wrap:wrap}
+.dmain{flex:1 1 420px;min-width:420px}
+.dside{flex:1 1 300px;min-width:280px;max-width:340px}
+.wodweb{display:block;width:100%;text-align:center;padding:36px 0 40px;border-top:2px solid var(--ink);border-bottom:2px solid var(--ink)}
+.wodweb .word{font-family:var(--serif);font-size:clamp(42px,5.4vw,64px);color:var(--ink);line-height:1.02}
+.wodweb .ipa{font-family:var(--mono);font-size:13px;color:var(--slate);margin-top:16px}
+.wodweb .answer{font-family:var(--serif);font-size:clamp(32px,3.8vw,44px);color:var(--terracotta);line-height:1.12}
+.wodweb .ex{font-family:var(--serif);font-style:italic;font-size:20px;color:var(--slate);margin-top:18px}
+.wodweb .hint{font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:oklch(65% .02 50);margin-top:24px}
+.webbtns{display:flex;gap:12px;margin-top:20px;flex-wrap:wrap}
+.webbtns .btn{flex:1}
+.sectlabel{font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--slate);font-weight:700}
+.sectlabel.teal{color:var(--teal)}.sectlabel.terra{color:var(--terracotta)}
+.fila{display:flex;align-items:baseline;gap:12px;border-top:2px solid var(--ink);padding-top:12px;margin-top:10px}
+.fila .fn{font-family:var(--serif);font-size:52px;color:var(--terracotta);line-height:.9}
+.fila .ft{font-family:var(--serif);font-style:italic;font-size:17px;color:var(--slate);line-height:1.35}
+.fila .ft .fte{display:block;font-family:var(--sans);font-style:normal;font-size:11.5px;color:var(--slate-en);margin-top:3px}
+.filarow{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--rule)}
+.filarow .fp{font-family:var(--serif);font-size:16px;color:var(--ink)}
+.filarow .fp .en2{font-family:var(--sans);font-size:11px;color:var(--slate-en)}
+.filarow .fv{font-family:var(--mono);font-size:11.5px;color:var(--slate)}
+.mbar{margin-bottom:14px}
+.mbar .mh{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.mbar .mp{font-family:var(--serif);font-size:16px;color:var(--ink)}
+.mbar .mp .en2{font-family:var(--sans);font-size:11px;color:var(--slate-en)}
+.mbar .mv{font-family:var(--mono);font-size:11px;color:var(--slate)}
+.mbar .mtk{height:3px;background:var(--rule)}
+.mbar .mtk>span{display:block;height:100%;background:var(--terracotta)}
+.mbar.teal .mtk>span{background:var(--teal)}
+
 /* reduced motion */
 @media(prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
 :focus-visible{outline:2px solid var(--terracotta);outline-offset:2px}
@@ -1413,7 +1467,7 @@ var app = document.getElementById("app");
 function motionOK(){
   try { return !window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch(e){ return true; }
 }
-function h(html){ app.innerHTML = html; window.scrollTo(0,0); }
+function h(html){ app.className=""; app.removeAttribute("data-screen"); app.innerHTML = html; window.scrollTo(0,0); }
 function on(sel, ev, fn){ var n = app.querySelectorAll(sel); for (var i=0;i<n.length;i++) n[i].addEventListener(ev, fn); }
 function toast(msg){
   var d = document.createElement("div"); d.className = "toast"; d.textContent = msg;
@@ -1443,6 +1497,10 @@ function greeting(){
 }
 function renderHome(){
   rollDay();
+  if (window.innerWidth >= 760) return renderHomeWeb();
+  return renderHomePhone();
+}
+function renderHomePhone(){
   var due = dueList().length;
   var allowance = Math.min(newAllowance(), newPool().length);
   var learned = Object.keys(S.prog).length;
@@ -1503,11 +1561,116 @@ function renderHome(){
       '<div class="fe">Works with no signal. Nothing leaves this device — your notebook is yours.</div></div>'
   );
 
+  bindHero(c);
+  bindNav();
+  app.setAttribute("data-screen","home");
+}
+
+/* Shared hero flip handler for phone + web home. */
+function bindHero(c){
   var hero = document.getElementById("hero");
+  if (!hero) return;
   hero.addEventListener("click", function(){
     if (heroFlipped) { heroFlipped = false; heroIdx++; renderHome(); }
     else { heroFlipped = true; renderHome(); autoSay(c.p); }
   });
+}
+
+/* ---- web home: the two-column dashboard ---- */
+function homeCounts(){
+  var totC = {}, startC = {};
+  for (var i=0;i<CARDS.length;i++){ var k = CARDS[i].c;
+    totC[k] = (totC[k]||0)+1; if (S.prog[CARDS[i].i]) startC[k]=(startC[k]||0)+1; }
+  var vocabDue=0, verbDue=0, gramDue=0, due = dueList();
+  for (var j=0;j<due.length;j++){ var cc = due[j].c;
+    if (cc==="conjugacao") verbDue++; else if (cc==="gramatica") gramDue++; else vocabDue++; }
+  return { totC:totC, startC:startC, vocabDue:vocabDue, verbDue:verbDue, gramDue:gramDue, dueN:due.length };
+}
+function railItems(active){
+  var nav = [
+    {k:"home",p:"Início",e:"Home"},{k:"review",p:"Rever",e:"Review"},
+    {k:"flash",p:"Cartões",e:"Flashcards"},{k:"choice",p:"Escolha",e:"Multiple choice"},
+    {k:"type",p:"Escrever",e:"Type it"},{k:"gender",p:"O ou A?",e:"Noun gender"},
+    {k:"conj",p:"Conjugações",e:"Conjugations"},{k:"browse",p:"Dicionário",e:"Dictionary"},
+    {k:"grammar",p:"Gramática",e:"Grammar"},{k:"method",p:"Método",e:"Method"},
+    {k:"settings",p:"Definições",e:"Settings"}
+  ];
+  return nav.map(function(n){
+    return '<button class="'+(n.k===active?"on":"")+'" data-nav="'+n.k+'">'+esc(n.p)+
+      '<span class="rle">'+esc(n.e)+'</span></button>';
+  }).join("");
+}
+function mbar(ptL, enL, start, tot, teal){
+  var pct = tot ? Math.round(start/tot*100) : 0;
+  return '<div class="mbar'+(teal?" teal":"")+'"><div class="mh">'+
+    '<span class="mp">'+esc(ptL)+' <span class="en2">'+esc(enL)+'</span></span>'+
+    '<span class="mv">'+start+'/'+tot+'</span></div>'+
+    '<div class="mtk"><span style="width:'+pct+'%"></span></div></div>';
+}
+function renderHomeWeb(){
+  var due = dueList().length;
+  var allowance = Math.min(newAllowance(), newPool().length);
+  var learned = Object.keys(S.prog).length;
+  var reviewN = due + allowance;
+  var c = heroCard();
+  var pt = variants(c.p)[0];
+  var k = homeCounts();
+  var mins = Math.max(1, Math.round(k.dueN * 0.5));
+  var minWord = mins === 1 ? "minute" : "minutes";
+
+  var wod = heroFlipped
+    ? '<div class="answer">'+esc(c.e)+'</div>'+
+      (c.ex?'<div class="ex">'+esc(c.ex)+'</div>':'')+
+      '<div class="hint">clica para virar · click to turn</div>'
+    : '<div class="word">'+esc(pt)+'</div>'+
+      (c.ipa?'<div class="ipa">'+esc(c.ipa)+'</div>':'')+
+      '<div class="hint">clica para virar · click to turn</div>';
+
+  h(
+    '<div class="webhead">'+
+      '<div><div class="wm">Mil Palavras</div>'+
+        '<div class="we">Português europeu · caderno pessoal</div>'+
+        '<div class="wee">European Portuguese · personal notebook</div></div>'+
+      '<div class="webkpis">'+
+        '<div class="webkpi terra"><div class="n">'+due+'</div><div class="lp">por rever</div><div class="le">due for review</div></div>'+
+        '<div class="webkpi teal"><div class="n">'+(S.streak||0)+'</div><div class="lp">dias seguidos</div><div class="le">day streak</div></div>'+
+        '<div class="webkpi"><div class="n">'+learned+'</div><div class="lp">começadas</div><div class="le">words started</div></div>'+
+      '</div>'+
+    '</div>'+
+
+    '<div class="webbody">'+
+      '<div class="rail"><div class="rhd">Índice · contents</div>'+railItems("home")+
+        '<div class="quote"><div class="qp">“Uma língua aprende-se palavra a palavra.”</div>'+
+        '<div class="qe">A language is learned one word at a time.</div></div></div>'+
+
+      '<div class="dash"><div class="dashrow">'+
+        '<div class="dmain">'+
+          '<div class="sectlabel teal" style="margin-bottom:16px">A palavra de hoje · word of the day</div>'+
+          '<button class="wodweb'+(heroFlipped?" fade-in":"")+'" id="hero">'+wod+'</button>'+
+          '<div class="webbtns">'+
+            '<button class="btn fill" data-nav="review">Rever · review · '+reviewN+'</button>'+
+            '<button class="btn outline" data-nav="grammar">Gramática · grammar</button>'+
+          '</div>'+
+        '</div>'+
+        '<div class="dside">'+
+          '<div class="sectlabel">A fila de hoje · today’s queue</div>'+
+          '<div class="fila"><span class="fn">'+k.dueN+'</span>'+
+            '<span class="ft">cartões por rever<span class="fte">cards due · about '+mins+' '+minWord+'</span></span></div>'+
+          '<div class="filarow"><span class="fp">palavras <span class="en2">words</span></span><span class="fv">'+k.vocabDue+'</span></div>'+
+          '<div class="filarow"><span class="fp">verbos <span class="en2">verbs</span></span><span class="fv">'+k.verbDue+'</span></div>'+
+          '<div class="filarow"><span class="fp">gramática <span class="en2">grammar</span></span><span class="fv">'+k.gramDue+'</span></div>'+
+          '<div class="sectlabel" style="margin:26px 0 12px">Progresso · progress</div>'+
+          mbar("Substantivos","nouns", (k.startC["substantivo"]||0), (k.totC["substantivo"]||0), false)+
+          mbar("Verbos","verbs", (k.startC["conjugacao"]||0), (k.totC["conjugacao"]||0), false)+
+          mbar("Gramática","grammar", (k.startC["gramatica"]||0), (k.totC["gramatica"]||0), true)+
+        '</div>'+
+      '</div></div>'+
+    '</div>'
+  );
+
+  app.classList.add("web");
+  app.setAttribute("data-screen","home");
+  bindHero(c);
   bindNav();
 }
 function row(nav, lab, sub, tail, glyph){
@@ -2149,6 +2312,15 @@ document.addEventListener("keydown", function(e){
     var g = app.querySelector('[data-grade="' + e.key + '"]');
     if (g) g.click();
   }
+});
+
+/* Re-render Home when the viewport crosses the phone/web breakpoint. */
+var _homeRz;
+window.addEventListener("resize", function(){
+  clearTimeout(_homeRz);
+  _homeRz = setTimeout(function(){
+    if (app.getAttribute("data-screen") === "home") renderHome();
+  }, 150);
 });
 
 /* ============================ boot ============================ */
