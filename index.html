@@ -106,6 +106,25 @@ input{font-family:inherit;font-size:inherit;color:inherit;background:none;border
 .tile-nav .tcs{font-size:10.5px;letter-spacing:.02em;color:var(--slate);margin-top:3px;text-transform:capitalize}
 .tile-nav:active{box-shadow:inset 0 0 0 1.5px var(--ink)}
 @media(hover:hover){.tile-nav:hover{box-shadow:inset 0 0 0 1.5px var(--ink)}}
+/* home progress + review forecast */
+.progblock{margin-top:4px;padding-top:16px;border-top:1px solid var(--rule-3)}
+.progrow{display:flex;margin:12px 0 10px}
+.progstat{flex:1;text-align:center}
+.progstat .pn{font-family:var(--serif);font-size:26px;line-height:1;color:var(--ink)}
+.progstat .pn.teal{color:var(--teal)}.progstat .pn.terra{color:var(--terracotta)}
+.progstat .plab{font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--slate);margin-top:7px}
+.progstat .plabe{font-size:10px;color:var(--slate-en);margin-top:1px}
+.pbar{display:flex;height:6px;background:var(--rule);overflow:hidden}
+.pbar span{display:block;height:100%}
+.pbar .pk{background:var(--teal)}.pbar .pl2{background:var(--terracotta)}
+.pcap{font-size:10.5px;color:var(--slate-en);margin-top:8px;line-height:1.45}
+.fcrow{display:flex;gap:5px;margin:14px 0 0;align-items:flex-end}
+.fccol{flex:1;text-align:center}
+.fccol .fcn{font-family:var(--mono);font-size:11px;color:var(--ink)}
+.fccol .fcbarwrap{height:44px;display:flex;align-items:flex-end;justify-content:center;margin:4px 0}
+.fccol .fcbar{display:block;width:64%;background:oklch(23% .025 45 / .16);min-height:2px}
+.fccol .fcbar.today{background:var(--terracotta)}
+.fccol .fcday{font-size:8.5px;letter-spacing:.02em;color:var(--slate)}
 
 /* ---------- word of the day / card face ---------- */
 .wod{display:block;width:100%;text-align:center;padding:26px 0 22px;border-bottom:1px solid var(--rule-3)}
@@ -1517,6 +1536,53 @@ function motionOK(){
   try { return !window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch(e){ return true; }
 }
 function h(html){ app.className=""; app.removeAttribute("data-screen"); app.innerHTML = html; window.scrollTo(0,0); }
+
+/* ---- progress + review-forecast data (for the home screen) ---- */
+/* Mastery over the ~1000 vocabulary words: known = interval >= 21 days. */
+function deckProgress(){
+  var known = 0, learning = 0, started = 0, total = WORDS.length;
+  for (var i=0;i<WORDS.length;i++){
+    var p = S.prog[WORDS[i].i];
+    if (p){ started++; if (p.iv >= 21) known++; else learning++; }
+  }
+  return { known:known, learning:learning, started:started, fresh:(total-started), total:total };
+}
+/* How many cards are due on each of the next n days (overdue counts as today). */
+function dueForecast(n){
+  var t = dayNo(), out = []; for (var i=0;i<n;i++) out.push(0);
+  for (var k in S.prog){ var b = S.prog[k].d - t; if (b < 0) b = 0; if (b < n) out[b]++; }
+  return out;
+}
+var WKD_PT = ["dom","seg","ter","qua","qui","sex","sáb"];   /* 0 = Sunday */
+function forecastLabel(i){
+  if (i === 0) return "hoje";
+  if (i === 1) return "amanhã";
+  /* epoch day 0 (1970-01-01) was a Thursday → +4 aligns to Sunday-indexed week */
+  return WKD_PT[(dayNo() + i + 4) % 7];
+}
+function progressForecastHTML(){
+  var pr = deckProgress(), fc = dueForecast(7);
+  var mx = Math.max(1, Math.max.apply(null, fc));
+  var pct = function(x){ return (x / pr.total * 100).toFixed(1); };
+  var bars = fc.map(function(count, i){
+    return '<div class="fccol"><div class="fcn">' + count + '</div>' +
+      '<div class="fcbarwrap"><span class="fcbar' + (i === 0 ? ' today' : '') + '" style="height:' + Math.round(count / mx * 100) + '%"></span></div>' +
+      '<div class="fcday">' + esc(forecastLabel(i)) + '</div></div>';
+  }).join("");
+  return '<div class="progblock"><div class="sectlabel">Progresso · progress</div>' +
+    '<div class="progrow">' +
+      '<div class="progstat"><div class="pn teal">' + pr.known + '</div><div class="plab">sabes</div><div class="plabe">you know</div></div>' +
+      '<div class="progstat"><div class="pn terra">' + pr.learning + '</div><div class="plab">a aprender</div><div class="plabe">learning</div></div>' +
+      '<div class="progstat"><div class="pn">' + pr.fresh + '</div><div class="plab">por começar</div><div class="plabe">to start</div></div>' +
+    '</div>' +
+    '<div class="pbar"><span class="pk" style="width:' + pct(pr.known) + '%"></span><span class="pl2" style="width:' + pct(pr.learning) + '%"></span></div>' +
+    '<div class="pcap">' + pr.started + ' de ' + pr.total + ' palavras começadas · ' + pr.started + ' of ' + pr.total + ' started. «Sabes» = acertaste ao longo de semanas (21+ dias) · "Known" = recalled across weeks (21+ days).</div>' +
+  '</div>' +
+  '<div class="progblock"><div class="sectlabel">Fila de revisão · review queue</div>' +
+    '<div class="fcrow">' + bars + '</div>' +
+    '<div class="pcap">O que volta nos próximos 7 dias. Se a fila estiver curta, faz exercícios para a encher. · What comes back over the next 7 days — if the queue is thin, do exercises to fill it.</div>' +
+  '</div>';
+}
 function on(sel, ev, fn){ var n = app.querySelectorAll(sel); for (var i=0;i<n.length;i++) n[i].addEventListener(ev, fn); }
 function toast(msg){
   var d = document.createElement("div"); d.className = "toast"; d.textContent = msg;
@@ -1603,6 +1669,8 @@ function renderHomePhone(){
       '<div class="kpi teal"><div class="n">'+(S.streak||0)+'</div><div class="lp">dias seguidos</div><div class="le">day streak</div></div>'+
       '<div class="kpi"><div class="n">'+learned+'</div><div class="lp">começadas</div><div class="le">words started</div></div>'+
     '</div>'+
+
+    progressForecastHTML()+
 
     '<div class="tiles">'+tiles+'</div>'+
 
@@ -1743,7 +1811,9 @@ function renderHomeWeb(){
           mbar("Verbos","verbs", (k.startC["conjugacao"]||0), (k.totC["conjugacao"]||0), false)+
           mbar("Gramática","grammar", (k.startC["gramatica"]||0), (k.totC["gramatica"]||0), true)+
         '</div>'+
-      '</div></div>'+
+      '</div>'+
+      '<div style="margin-top:34px;padding-top:22px;border-top:2px solid var(--ink)">'+progressForecastHTML()+'</div>'+
+      '</div>'+
     '</div>'
   );
 
