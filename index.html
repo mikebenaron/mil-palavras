@@ -2520,9 +2520,6 @@ function attachSync(){
 }
 function startApp(){
   var attached = attachSync();
-  // Local-only preview bypass (can never trigger on the real domain).
-  if ((location.hostname === "localhost" || location.hostname === "127.0.0.1") &&
-      location.search.indexOf("dev=1") > -1) { renderHome(); return; }
   if (attached && window.MilSync.gate) window.MilSync.gate();
   else renderHome();   // fallback if the account layer failed to load
 }
