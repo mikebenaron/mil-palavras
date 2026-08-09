@@ -2420,7 +2420,9 @@ function renderMethod(){
   }).join("");
   renderPage("method", screenTitle("Método", "method") +
     screenIntro("Seis hábitos que fazem tudo isto pegar.", "Six habits that make it stick.") +
-    '<div style="margin-top:6px">' + body + '</div>', renderMethod);
+    '<div style="margin-top:6px">' + body + '</div>' +
+    '<div class="footnote" style="margin-top:22px"><div class="np">Na pronúncia, as MAIÚSCULAS marcam a sílaba tónica — a que se diz com mais força — e "(nasal)" marca um som nasal.</div>' +
+    '<div class="ne">In the pronunciation guides, CAPITALS mark the stressed syllable (the one you say hardest); "(nasal)" marks a nasal sound.</div></div>', renderMethod);
   bindNav();
 }
 
