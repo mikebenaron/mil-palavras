@@ -1,6 +1,6 @@
 /* Mil Palavras service worker — offline app shell.
    Bump CACHE_VERSION whenever the app files change to force an update. */
-const CACHE_VERSION = 'mil-palavras-v31';
+const CACHE_VERSION = 'mil-palavras-v32';
 /* Audio lives in its own cache, deliberately NOT tied to CACHE_VERSION.
    The clips never change, they are ~82MB, and a user may have chosen to
    download all of them — wiping that on every app update (a CSS tweak!)
@@ -18,13 +18,13 @@ const APP_SHELL = [
   // network-first (always fresh) while these are cache-first, so without the
   // ?v= a new document could run against last release's scripts — which is
   // exactly how a signed-in user got told to sign in.
-  './vendor/supabase.js?v=31',
-  './sync-config.js?v=31',
-  './sync.js?v=31',
-  './content.js?v=31',
-  './readings.js?v=31',
+  './vendor/supabase.js?v=32',
+  './sync-config.js?v=32',
+  './sync.js?v=32',
+  './content.js?v=32',
+  './readings.js?v=32',
   './audio/manifest.json',
-  './fonts.css?v=31'
+  './fonts.css?v=32'
 ];
 // Audio clips are NOT precached — ~20MB is far too much to force on install.
 // They are cached individually by the fetch handler as they're played, and a
@@ -58,6 +58,11 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
 
+  // Never intercept the worker script itself. Caching it meant the in-app
+  // update check read a stale version and concluded the app was current —
+  // the update mechanism defeating itself.
+  if (/\/sw\.js(\?|$)/.test(new URL(req.url).pathname + new URL(req.url).search)) return;
+
   const isNavigation = req.mode === 'navigate' ||
     (req.headers.get('accept') || '').includes('text/html');
 
@@ -68,8 +73,15 @@ self.addEventListener('fetch', (event) => {
     (res.type === 'basic' || res.type === 'cors');
 
   if (isNavigation) {
+    // cache: 'reload' bypasses the browser's own HTTP cache. Without it this
+    // "network-first" fetch could still be served a stale index.html by Safari
+    // for as long as GitHub Pages' max-age, leaving the app several versions
+    // behind with no way for the user to force it forward.
+    const fresh = new Request(req.url, {
+      cache: 'reload', credentials: 'same-origin', redirect: 'follow'
+    });
     event.respondWith(
-      fetch(req)
+      fetch(fresh)
         .then((res) => {
           if (cacheable(res)) {
             const copy = res.clone();
