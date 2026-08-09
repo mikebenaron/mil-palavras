@@ -1,6 +1,11 @@
 /* Mil Palavras service worker — offline app shell.
    Bump CACHE_VERSION whenever the app files change to force an update. */
-const CACHE_VERSION = 'mil-palavras-v23';
+const CACHE_VERSION = 'mil-palavras-v25';
+/* Audio lives in its own cache, deliberately NOT tied to CACHE_VERSION.
+   The clips never change, they are ~82MB, and a user may have chosen to
+   download all of them — wiping that on every app update (a CSS tweak!)
+   would be indefensible. Only bump this if the recordings themselves change. */
+const AUDIO_CACHE = 'mil-palavras-audio-v1';
 const APP_SHELL = [
   './',
   './index.html',
@@ -36,7 +41,8 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
       .then((keys) => Promise.all(
-        keys.filter((k) => k !== CACHE_VERSION).map((k) => caches.delete(k))
+        keys.filter((k) => k !== CACHE_VERSION && k !== AUDIO_CACHE)
+            .map((k) => caches.delete(k))
       ))
       .then(() => self.clients.claim())
   );
@@ -72,11 +78,16 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Clips go to the durable audio cache, whether played one at a time or
+  // pulled down in bulk by "download all audio".
+  const isClip = /\/audio\/.+\.mp3$/.test(new URL(req.url).pathname);
+  const store = isClip ? AUDIO_CACHE : CACHE_VERSION;
+
   event.respondWith(
     caches.match(req).then((cached) => cached || fetch(req).then((res) => {
       if (cacheable(res)) {
         const copy = res.clone();
-        caches.open(CACHE_VERSION).then((cache) => cache.put(req, copy));
+        caches.open(store).then((cache) => cache.put(req, copy));
       }
       return res;
     }))

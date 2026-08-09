@@ -17,6 +17,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { drillTexts } from "./drills.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "../..");
@@ -49,6 +50,9 @@ const argv = process.argv.slice(2);
 const LIMIT = argv.includes("--limit") ? Number(argv[argv.indexOf("--limit") + 1]) : Infinity;
 const ONLY_WORDS = argv.includes("--words");
 const ONLY_READINGS = argv.includes("--readings");
+const ONLY_DRILLS = argv.includes("--drills");
+const ONLY_PWORDS = argv.includes("--passagewords");
+const PICKED = ONLY_WORDS || ONLY_READINGS || ONLY_DRILLS || ONLY_PWORDS;
 
 /* ---- the same text the app would have spoken ---------------------- */
 /* Mirrors Speech.sayable() in index.html: alternatives separated by a slash
@@ -73,20 +77,57 @@ const win = {};
 new Function("window", readingsJs)(win);
 const READINGS = win.MIL_READINGS || [];
 
+/* Conjugation and grammar drills. Without these, "Tudo" and "Mistura
+   aleatória" mix unrecorded cards into a session and the device voice — often
+   Brazilian, often the wrong gender — appears mid-drill. */
+const DRILLS = await drillTexts(ROOT);
+
+/* Individual words as they appear inside passages, so tapping any word in a
+   story can play it. Only the ones no other set already covers — the deck and
+   the conjugation drills between them account for about a third. Deduped
+   case-insensitively: "Reggae" and "reggae" are one recording. */
+const covered = new Set([
+  ...WORDS.map((c) => sayable(c.p).toLowerCase()),
+  ...DRILLS.map((t) => sayable(t).toLowerCase()),
+]);
+const pseen = new Set(), PWORDS = [];
+for (const r of READINGS) {
+  for (const l of r.lines || []) {
+    for (const tok of (l.pt.match(/[A-Za-zÀ-ÿ]+/g) || [])) {
+      const low = tok.toLowerCase();
+      if (covered.has(low) || pseen.has(low)) continue;
+      pseen.add(low);
+      PWORDS.push(low);
+    }
+  }
+}
+PWORDS.sort();
+
 const jobs = [];
-if (!ONLY_READINGS) {
+if (!PICKED || ONLY_WORDS) {
   for (const c of WORDS) {
     const text = sayable(c.p);
     if (text) jobs.push({ file: path.join(AUDIO, "w", `${c.i}.mp3`), text });
   }
 }
-if (!ONLY_WORDS) {
+if (!PICKED || ONLY_READINGS) {
   for (const r of READINGS) {
     (r.lines || []).forEach((l, i) => {
       const text = sayable(l.pt);
       if (text) jobs.push({ file: path.join(AUDIO, "r", `${r.id}__${i}.mp3`), text });
     });
   }
+}
+if (!PICKED || ONLY_DRILLS) {
+  // Indexed by position: the manifest ships the same array, so the app maps
+  // text -> audio/d/<i>.mp3 without needing card ids to stay stable.
+  DRILLS.forEach((t, i) => {
+    const text = sayable(t);
+    if (text) jobs.push({ file: path.join(AUDIO, "d", `${i}.mp3`), text });
+  });
+}
+if (!PICKED || ONLY_PWORDS) {
+  PWORDS.forEach((t, i) => jobs.push({ file: path.join(AUDIO, "p", `${i}.mp3`), text: t }));
 }
 
 const chars = jobs.reduce((n, j) => n + j.text.length, 0);
@@ -132,6 +173,8 @@ async function speak(text) {
 
 await fs.mkdir(path.join(AUDIO, "w"), { recursive: true });
 await fs.mkdir(path.join(AUDIO, "r"), { recursive: true });
+await fs.mkdir(path.join(AUDIO, "d"), { recursive: true });
+await fs.mkdir(path.join(AUDIO, "p"), { recursive: true });
 
 let made = 0, skipped = 0, failed = 0, n = 0;
 const started = Date.now();
@@ -164,8 +207,21 @@ async function listDir(sub) {
   try { return (await fs.readdir(path.join(AUDIO, sub))).filter((f) => f.endsWith(".mp3")); }
   catch { return []; }
 }
+/* Exact total, so the download button can state the real size rather than a
+   number that quietly goes stale as the library grows. */
+async function totalBytes(subs) {
+  let n = 0;
+  for (const sub of subs) {
+    for (const f of await listDir(sub)) {
+      try { n += (await fs.stat(path.join(AUDIO, sub, f))).size; } catch {}
+    }
+  }
+  return n;
+}
 const haveW = await listDir("w");
 const haveR = await listDir("r");
+const haveD = await listDir("d");
+const haveP = await listDir("p");
 
 // The app checks this before requesting a clip, so a missing file never costs
 // a failed round-trip — it falls back to speechSynthesis immediately.
@@ -173,10 +229,16 @@ await fs.writeFile(path.join(AUDIO, "manifest.json"), JSON.stringify({
   voice: VOICE,
   rate: RATE,
   built: new Date().toISOString().slice(0, 10),
+  bytes: await totalBytes(["w", "r", "d", "p"]),
   words: haveW.map((f) => Number(f.replace(".mp3", ""))).sort((a, b) => a - b),
   readings: haveR.map((f) => f.replace(".mp3", "")).sort(),
+  // Drill texts in file order: index i corresponds to audio/d/<i>.mp3, and
+  // only entries whose file actually exists are listed.
+  drills: DRILLS.map((t, i) => (haveD.includes(i + ".mp3") ? t : null)),
+  // Passage words, same positional scheme -> audio/p/<i>.mp3
+  passage: PWORDS.map((t, i) => (haveP.includes(i + ".mp3") ? t : null)),
 }));
 
 const mins = ((Date.now() - started) / 60000).toFixed(1);
 console.log(`\n\nmade ${made} · skipped ${skipped} · failed ${failed} · ${mins} min`);
-console.log(`audio/ now holds ${haveW.length} words and ${haveR.length} passage lines`);
+console.log(`audio/ now holds ${haveW.length} words, ${haveR.length} passage lines, ${haveD.length} drills, ${haveP.length} passage words`);

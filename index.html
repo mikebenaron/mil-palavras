@@ -322,14 +322,19 @@ input{font-family:inherit;font-size:inherit;color:inherit;background:none;border
 
 /* ---------- leitura (reading) ---------- */
 .passage{margin-top:8px}
-.rline{padding:12px 0;border-bottom:1px solid var(--rule);cursor:pointer}
+/* Left gutter is always reserved, so the read-along marker has somewhere to
+   live and the text doesn't shift when a line starts being read. */
+.rline{padding:12px 0 12px 14px;border-bottom:1px solid var(--rule);cursor:pointer;position:relative}
 .rline .rpt{font-family:var(--serif);font-size:20px;line-height:1.5;color:var(--ink)}
 /* the line currently being read aloud */
-.rline.reading{background:oklch(93% .04 85);box-shadow:inset 3px 0 0 var(--terracotta)}
+.rline.reading{background:oklch(93% .04 85)}
+.rline.reading::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--terracotta)}
 .rline.reading .rpt{color:var(--ink)}
 [data-listen] .lbl-stop{display:none}
 [data-listen].on .lbl-stop{display:inline}
 [data-listen].on .lbl-play{display:none}
+.dlbar{height:6px;background:var(--rule-3);margin:14px 0 8px;overflow:hidden}
+.dlbar span{display:block;height:100%;width:0;background:var(--teal);transition:width .25s ease}
 .legal p{font-size:14.5px;line-height:1.6;color:var(--ink);margin:0 0 13px;max-width:62ch}
 .legal p.en{color:var(--slate);font-size:13.5px;margin-top:-8px}
 .legal h2{font-family:var(--serif);font-size:21px;font-weight:400;margin:28px 0 10px;color:var(--ink)}
@@ -349,7 +354,10 @@ input{font-family:inherit;font-size:inherit;color:inherit;background:none;border
   transform:translateY(110%);transition:transform .18s ease;padding-bottom:var(--safe-b);box-shadow:0 -8px 30px rgba(40,25,15,.25)}
 .winfobar.show{transform:translateY(0)}
 .wib-in{max-width:680px;margin:0 auto;padding:16px 22px 18px;position:relative}
-.wib-word{font-family:var(--serif);font-size:23px;line-height:1.1}
+.wib-word{font-family:var(--serif);font-size:23px;line-height:1.1;display:flex;align-items:center;gap:12px}
+.wib-say{color:var(--ochre);padding:6px;margin:-6px 0;flex:none}
+.wib-say:active{opacity:.5}
+.wib-say.busy{opacity:.45}
 .wib-tag{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--ochre);margin-top:5px}
 .wib-detail{font-size:14.5px;color:oklch(86% .02 80);margin-top:7px;line-height:1.45}
 .wib-x{position:absolute;top:10px;right:16px;font-size:24px;line-height:1;color:var(--paper);opacity:.65;padding:4px}
@@ -751,6 +759,14 @@ var Recorded = (function(){
     (typeof WORDS !== "undefined" ? WORDS : []).forEach(function(c){
       if (w[c.i]) byText[norm(c.p)] = "audio/w/" + c.i + ".mp3";
     });
+    // Conjugation and grammar drills, keyed by position in the manifest array.
+    (manifest.drills || []).forEach(function(t, i){
+      if (t) byText[norm(t)] = "audio/d/" + i + ".mp3";
+    });
+    // Individual words from the passages, so any tapped word can be heard.
+    (manifest.passage || []).forEach(function(t, i){
+      if (t) byText[norm(t)] = "audio/p/" + i + ".mp3";
+    });
     var r = {}; (manifest.readings || []).forEach(function(k){ r[k] = 1; });
     (typeof READINGS !== "undefined" ? READINGS : []).forEach(function(p){
       (p.lines || []).forEach(function(l, i){
@@ -767,9 +783,16 @@ var Recorded = (function(){
      then fails — offline with that file uncached, or autoplay blocked — it
      calls onFail so the device synth still gets a turn, rather than the word
      silently doing nothing. */
-  function play(text, btn, onFail){
+  /* Exact match first, then lower-cased: passage words are stored lower case,
+     but a tapped token is often capitalised ("Oeiras", "Chama"). */
+  function lookup(text){
     index();
-    var src = byText && byText[norm(text)];
+    if (!byText) return null;
+    var k = norm(text);
+    return byText[k] || byText[k.toLowerCase()] || null;
+  }
+  function play(text, btn, onFail){
+    var src = lookup(text);
     if (!src) return false;
     try {
       if (cur) { try { cur.pause(); } catch(e){} cur = null; }
@@ -799,11 +822,107 @@ var Recorded = (function(){
 
   return {
     play: play,
-    srcFor: function(text){ index(); return (byText && byText[norm(text)]) || null; },
+    srcFor: lookup,
+    allSources: function(){
+      if (!manifest) return [];
+      var out = [];
+      (manifest.words || []).forEach(function(i){ out.push("audio/w/" + i + ".mp3"); });
+      (manifest.readings || []).forEach(function(k){ out.push("audio/r/" + k + ".mp3"); });
+      (manifest.drills || []).forEach(function(t, i){ if (t) out.push("audio/d/" + i + ".mp3"); });
+      (manifest.passage || []).forEach(function(t, i){ if (t) out.push("audio/p/" + i + ".mp3"); });
+      return out;
+    },
     speed: speedFor,
     ready: function(){ index(); return !!(byText && Object.keys(byText).length); },
     count: function(){ index(); return byText ? Object.keys(byText).length : 0; },
-    voice: function(){ return manifest ? manifest.voice : null; }
+    voice: function(){ return manifest ? manifest.voice : null; },
+    bytes: function(){ return manifest && manifest.bytes ? manifest.bytes : 0; },
+    sizeLabel: function(){
+      var b = manifest && manifest.bytes;
+      return b ? " — about " + Math.round(b / 1048576) + " MB" : "";
+    }
+  };
+})();
+
+/* Bulk download of the recorded audio, so the app is genuinely usable with no
+   signal. Writes into the same durable cache the service worker reads from
+   (AUDIO_CACHE in sw.js), so clips pulled down here are the very ones served
+   later, and an app update never touches them. */
+var AudioStore = (function(){
+  var CACHE = "mil-palavras-audio-v1";
+  var running = false, abort = false;
+
+  function ok(){ return !!(window.caches && Recorded.allSources().length); }
+
+  function status(){
+    if (!ok()) return Promise.resolve({ total:0, have:0 });
+    var all = Recorded.allSources();
+    return caches.open(CACHE).then(function(c){ return c.keys(); }).then(function(keys){
+      var have = {};
+      keys.forEach(function(rq){ have[new URL(rq.url).pathname.replace(/^.*\/audio\//, "audio/")] = 1; });
+      var n = 0;
+      all.forEach(function(u){ if (have[u]) n++; });
+      return { total: all.length, have: n };
+    }).catch(function(){ return { total: all.length, have: 0 }; });
+  }
+
+  function downloadAll(onProgress){
+    if (running) return Promise.resolve();
+    running = true; abort = false;
+    var all = Recorded.allSources(), done = 0, failed = 0;
+
+    // Ask the browser not to evict this — otherwise a big download can vanish.
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch(e){}
+
+    return caches.open(CACHE).then(function(cache){
+      return cache.keys().then(function(keys){
+        var have = {};
+        keys.forEach(function(rq){ have[new URL(rq.url).pathname.replace(/^.*\/audio\//, "audio/")] = 1; });
+        var todo = all.filter(function(u){ return !have[u]; });
+        done = all.length - todo.length;
+        onProgress({ done:done, total:all.length, failed:0 });
+
+        // A few at a time: fast, without opening 1500 sockets at once.
+        var i = 0, LANES = 6;
+        function lane(){
+          if (abort || i >= todo.length) return Promise.resolve();
+          var url = todo[i++];
+          return fetch(url, { cache: "no-store" })
+            .then(function(res){
+              if (!res || !res.ok) throw new Error("bad response");
+              return cache.put(url, res);
+            })
+            .catch(function(e){
+              failed++;
+              // Out of space is fatal for the whole run — stop and report it.
+              if (e && /quota|space/i.test(String(e.name) + String(e.message))) { abort = true; throw e; }
+            })
+            .then(function(){
+              done++;
+              onProgress({ done:done, total:all.length, failed:failed });
+              return lane();
+            });
+        }
+        var lanes = [];
+        for (var L=0; L<LANES; L++) lanes.push(lane());
+        return Promise.all(lanes);
+      });
+    }).then(function(){
+      running = false;
+      return { done:done, failed:failed, aborted:abort };
+    }).catch(function(e){
+      running = false;
+      return { done:done, failed:failed, aborted:true, error:e && (e.message || String(e)) };
+    });
+  }
+
+  return {
+    ok: ok,
+    status: status,
+    downloadAll: downloadAll,
+    stop: function(){ abort = true; },
+    running: function(){ return running; },
+    remove: function(){ return caches.delete(CACHE); }
   };
 })();
 
@@ -1701,6 +1820,11 @@ var GTOPIC = {
 })();
 
 CARDS = WORDS.concat(DRILLS);
+/* Drill cards are generated here rather than stored in a data file, so the
+   audio build script has no other way to learn their text. Exposed only under
+   ?dev=1 on localhost, same gate as the auth bypass. */
+if ((location.hostname === "localhost" || location.hostname === "127.0.0.1") &&
+    location.search.indexOf("dev=1") > -1) window.__CARDS__ = CARDS;
 CARDS.forEach(function(c){ BY_ID[c.i] = c; });
 
 function drillGroups(kind){
@@ -2872,7 +2996,7 @@ function escapeRe(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
 /* Shown in Definições — bump with CACHE_VERSION in sw.js so a device can be
    checked against the deployed build. */
-var APP_BUILD = "v23";
+var APP_BUILD = "v25";
 
 /* ---- tap-a-word info: contractions, verb infinitives, word meanings ---- */
 var CONTRACTIONS = {
@@ -2952,11 +3076,25 @@ function showWordInfo(raw){
     document.body.appendChild(bar);
     bar.addEventListener("click", function(e){ if (e.target === bar || e.target.getAttribute("data-wclose") != null) bar.classList.remove("show"); });
   }
+  // Hear the individual word, not the whole sentence — the tapped form first
+  // (so "podem" plays "podem"), falling back to the dictionary form.
+  var clip = Recorded.srcFor(raw) || Recorded.srcFor(info.word);
   bar.innerHTML = '<div class="wib-in"><button class="wib-x" data-wclose>×</button>' +
-    '<div class="wib-word">' + esc(info.word) + '</div>' +
+    '<div class="wib-word">' + esc(info.word) +
+      (clip ? '<button class="wib-say" data-wsay aria-label="Hear this word">' +
+        '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" ' +
+        'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M4 7.5h2.5L10 4.5v11L6.5 12.5H4z" fill="currentColor" stroke="none"/>' +
+        '<path d="M13 7.4a3.6 3.6 0 010 5.2"/><path d="M15.4 5a7 7 0 010 10"/></svg></button>' : '') +
+    '</div>' +
     (info.tag ? '<div class="wib-tag">' + esc(info.tag) + '</div>' : '') +
     '<div class="wib-detail">' + esc(info.detail) + '</div></div>';
   bar.classList.add("show");
+  var sayBtn = bar.querySelector("[data-wsay]");
+  if (sayBtn) sayBtn.addEventListener("click", function(e){
+    e.stopPropagation();
+    Speech.speak(Recorded.srcFor(raw) ? raw : info.word, sayBtn);
+  });
 }
 
 function renderReading(id){
@@ -3244,6 +3382,57 @@ window.MilLegal = {
   }
 };
 
+/* Wiring for the offline-audio downloader in Definições. Kept out of
+   renderSettings so a re-render during a download doesn't restart it. */
+function bindAudioDownload(){
+  if (!AudioStore.ok()) return;
+  var fill = document.getElementById("dlfill"),
+      stat = document.getElementById("dlstat"),
+      goBtn = app.querySelector('[data-dl="go"]'),
+      stopBtn = app.querySelector('[data-dl="stop"]'),
+      rmBtn = app.querySelector('[data-dl="rm"]');
+  if (!fill || !stat) return;
+
+  function paint(p){
+    if (!fill.isConnected) return;              // user navigated away
+    var pct = p.total ? Math.round(p.done / p.total * 100) : 0;
+    fill.style.width = pct + "%";
+    var mb = Math.round(p.done / Math.max(p.total,1) * (Recorded.bytes() / 1048576));
+    stat.textContent = p.done >= p.total
+      ? "Tudo descarregado · all " + p.total + " clips downloaded" + (p.failed ? " (" + p.failed + " failed)" : "")
+      : p.done + " / " + p.total + " · ~" + mb + " MB" + (p.failed ? " · " + p.failed + " failed" : "");
+  }
+  function busy(on){
+    if (goBtn) goBtn.hidden = on;
+    if (stopBtn) stopBtn.hidden = !on;
+    if (rmBtn) rmBtn.disabled = on;
+  }
+
+  AudioStore.status().then(function(s){ paint({ done:s.have, total:s.total, failed:0 }); });
+  busy(AudioStore.running());
+
+  if (goBtn) goBtn.addEventListener("click", function(){
+    busy(true);
+    stat.textContent = "A descarregar… · downloading…";
+    AudioStore.downloadAll(paint).then(function(r){
+      busy(false);
+      if (r.error && /quota|space/i.test(r.error))
+        toast("Sem espaço no aparelho · not enough space");
+      else if (r.aborted) toast("Parado · stopped");
+      else if (r.failed) toast(r.failed + " falharam · failed — try again");
+      else toast("Áudio pronto sem ligação · audio ready offline");
+      AudioStore.status().then(function(s){ paint({ done:s.have, total:s.total, failed:0 }); });
+    });
+  });
+  if (stopBtn) stopBtn.addEventListener("click", function(){ AudioStore.stop(); busy(false); });
+  if (rmBtn) rmBtn.addEventListener("click", function(){
+    AudioStore.remove().then(function(){
+      toast("Descarregados removidos · downloads removed");
+      paint({ done:0, total:Recorded.allSources().length, failed:0 });
+    });
+  });
+}
+
 function renderSettings(){
   var d = S.set.dir;
   var toggles = CLASS_ORDER.map(function(k){
@@ -3297,6 +3486,20 @@ function renderSettings(){
     // explained which voice you were hearing.
     '<div class="fhe" id="voiceline" lang="en" style="margin-top:12px">' + voiceLine() + '</div>' +
     '</div>' +
+
+    (AudioStore.ok() ?
+    '<div class="field"><div class="fl">Áudio sem ligação</div><div class="fle">offline audio</div>' +
+      '<div class="fh">Descarrega todas as gravações para o aparelho. Depois disto, tudo funciona sem internet.</div>' +
+      '<div class="fhe">Download every recording to this device' + Recorded.sizeLabel() +
+        '. After that the whole app works with no signal.</div>' +
+      '<div class="dlbar"><span id="dlfill"></span></div>' +
+      '<div class="foot" id="dlstat">A verificar… · checking…</div>' +
+      '<div class="stack mt">' +
+        '<button class="btn outline block" data-dl="go">Descarregar áudio · download audio</button>' +
+        '<button class="btn outline block" data-dl="stop" hidden>Parar · stop</button>' +
+        '<button class="btn outline block" data-dl="rm">Remover descarregados · remove downloads</button>' +
+      '</div>' +
+    '</div>' : '') +
 
     '<div class="sectlabel" style="margin:30px 0 8px">Classes em rotação · word classes</div>' +
     '<div class="fhe" style="margin-bottom:6px">Desliga uma classe e nada de novo dela entra; o que já anda em rotação continua a voltar. · Turn a class off and nothing new from it is introduced.</div>' +
@@ -3369,6 +3572,7 @@ function renderSettings(){
   });
   bindNav();
   bindLegalNav();
+  bindAudioDownload();
   if (window.MilSync) window.MilSync.mount();
 }
 

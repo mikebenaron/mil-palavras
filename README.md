@@ -1,47 +1,61 @@
 # Mil Palavras — European Portuguese
 
-A single-page web app for learning the ~1,000 most useful words and phrases of
-**European Portuguese** through spaced repetition, flashcards, and quizzes.
+Learn the ~1,000 most useful words of **European Portuguese** — never
+Brazilian — through spaced repetition, graded reading, and real recorded audio.
 
-It is a fully self-contained Progressive Web App: no build step, no server, no
-external dependencies. All vocabulary is embedded in the page, and your progress
-is saved locally in the browser.
+**Live: [milpalavras.app](https://milpalavras.app)**
 
-## Features
+A Progressive Web App with no build step and no framework. Add it to your home
+screen and it works fully offline.
 
-- **Spaced repetition review** — the main study loop, scheduling words as they come due.
-- **Flashcards** — flip through a set at your own pace.
-- **Multiple choice** quizzes.
-- **Offline support** — a service worker caches the app so it works with no connection.
-- **Installable** — add it to your iPhone/Android home screen and it runs full-screen like a native app.
+## What's in it
 
-## Running locally
+- **Spaced repetition** over 990 vocabulary cards, plus ~3,000 generated
+  conjugation and grammar drills.
+- **Leitura** — 101 graded passages (A1–B2), each labelled with its level,
+  theme and source. Four exercise modes: read with tap-to-reveal translation,
+  cloze fill-the-gaps, translate, and comprehension questions.
+- **Tap any word** in a passage for its meaning — the infinitive behind a
+  conjugated form, the parts behind a contraction (`ao` → `a + o`) — and hear
+  it spoken.
+- **Read-along** — a passage narrated line by line with the current sentence
+  highlighted.
+- **Real European Portuguese audio.** ~5,400 clips recorded with Azure's
+  `pt-PT-DuarteNeural`, so pronunciation is identical on every device instead
+  of depending on whatever voice the phone happens to have installed (often a
+  Brazilian one). Adjustable speed with pitch preserved.
+- **Accounts and sync** — progress follows you across devices, with offline-first
+  last-write-wins reconciliation.
+- **Offline** — download the whole audio library and use the app with no signal.
 
-It's just static files. From this folder:
+## Running it locally
+
+Static files, so any web server works:
 
 ```bash
-python3 -m http.server 8000
+python3 -m http.server 8765
 ```
 
-Then open <http://localhost:8000>. (A plain server is needed rather than opening
-the file directly, so the service worker can register.)
+Open `http://localhost:8765/?dev=1` — the `dev=1` flag skips the sign-in gate
+and only works on localhost.
 
-## Installing on your phone
+## Repository
 
-1. Open the live site in Safari (iOS) or Chrome (Android).
-2. iOS: tap **Share → Add to Home Screen**. Android: tap the **Install** prompt / menu.
-3. Launch it from the new icon — it opens full-screen and works offline.
+| Path | What |
+|---|---|
+| `index.html` | The app — design system, vocabulary data, and all logic |
+| `readings.js` | The 101 reading passages |
+| `content.js` | Per-word pronunciation, examples and usage notes |
+| `sync.js` | Accounts and progress sync (Supabase) |
+| `audio/` | Pre-generated speech, served same-origin and cached on play |
+| `tools/audio/` | Scripts that build the audio library |
+| `tools/voice-test/` | The blind A/B harness used to choose the voice |
+| `CLAUDE.md` | Architecture notes, invariants and gotchas |
 
-## Project structure
+## Content sources
 
-| File | Purpose |
-| --- | --- |
-| `index.html` | The entire app — UI, logic, and embedded vocabulary data. |
-| `manifest.webmanifest` | PWA metadata (name, icons, colors, standalone display). |
-| `sw.js` | Service worker for offline caching. |
-| `icon-*.png`, `apple-touch-icon.png` | App icons. |
-
-## Updating the app
-
-After editing `index.html` (or any cached file), bump `CACHE_VERSION` in
-`sw.js` so installed users pick up the new version.
+Reading passages come from public-domain or openly-licensed material (folk
+tales, Aesop, traditional proverbs, Wikipedia adapted to European Portuguese)
+with attribution, or are original summaries with a dated link — never
+copyrighted text reproduced verbatim. Passages written or adapted by AI carry a
+**✳** mark in the app.
