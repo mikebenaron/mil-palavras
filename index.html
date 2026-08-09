@@ -333,6 +333,10 @@ input{font-family:inherit;font-size:inherit;color:inherit;background:none;border
 .gapinput:focus{outline:none;background:oklch(55% .16 40 / .08)}
 .gapinput.right{color:var(--teal);border-bottom-color:var(--teal)}
 .gapinput.wrong{color:var(--vinho);border-bottom-color:var(--vinho)}
+.wbank{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 18px}
+.wbchip{font-family:var(--serif);font-size:16px;color:var(--ink);padding:8px 14px;background:var(--card);box-shadow:inset 0 0 0 1px var(--rule-3)}
+.wbchip.used{opacity:.32;text-decoration:line-through}
+@media(hover:hover){.wbchip:not(.used):hover{box-shadow:inset 0 0 0 1.5px var(--terracotta);color:var(--terracotta)}}
 
 /* ---------- toast ---------- */
 .toast{position:fixed;left:50%;bottom:calc(var(--safe-b) + 26px);transform:translateX(-50%);
@@ -2597,9 +2601,17 @@ function renderReading(id){
       return '<span class="clozeline">' + t + '</span> ';
     }).join("");
     var accents = ACCENTS.map(function(a){ return '<button class="akey" data-racc="' + a + '">' + a + '</button>'; }).join("");
-    body = '<div class="passage cloze">' + cloze + '</div>' +
-      '<div class="accents" style="margin-top:16px">' + accents + '</div>' +
-      '<button class="btn fill block" style="margin-top:16px" data-check="1">Verificar · check</button>' +
+    var bank = shuffle(r.gaps.slice()).map(function(w){
+      return '<button class="wbchip" data-word="' + esc(w) + '">' + esc(w) + '</button>';
+    }).join("");
+    body = '<div class="pcap" style="margin-top:12px">Toca numa palavra e ela vai para a próxima lacuna. · Tap a word and it drops into the next gap.</div>' +
+      '<div class="wbank">' + bank + '</div>' +
+      '<div class="passage cloze">' + cloze + '</div>' +
+      '<div class="accents" style="margin-top:14px">' + accents + '</div>' +
+      '<div class="btnrow" style="margin-top:14px">' +
+        '<button class="btn outline" data-transl="1">Ver tradução · translation</button>' +
+        '<button class="btn fill" data-check="1">Verificar · check</button></div>' +
+      '<div id="translbox" style="display:none"></div>' +
       '<div id="clozeres"></div>';
   }
 
@@ -2620,6 +2632,24 @@ function renderReading(id){
     var s = readGap.selectionStart || readGap.value.length;
     readGap.value = readGap.value.slice(0,s) + a + readGap.value.slice(readGap.selectionEnd || s);
     readGap.focus(); readGap.setSelectionRange(s+1, s+1);
+  });
+  // word bank: tap a word to drop it into the focused-or-next empty gap
+  on("[data-word]","click",function(e){
+    var w = e.currentTarget.getAttribute("data-word");
+    var target = (readGap && !readGap.value && !readGap.disabled) ? readGap : null;
+    if (!target) for (var j=0;j<gaps.length;j++){ if (!gaps[j].value && !gaps[j].disabled){ target = gaps[j]; break; } }
+    if (!target) return;
+    target.value = w;
+    e.currentTarget.classList.add("used"); e.currentTarget.setAttribute("disabled","");
+    for (var k=0;k<gaps.length;k++){ if (!gaps[k].value){ gaps[k].focus(); readGap = gaps[k]; break; } }
+  });
+  on("[data-transl]","click",function(){
+    var box = document.getElementById("translbox");
+    if (!box.innerHTML){
+      box.innerHTML = '<div class="note" style="margin-top:14px"><div class="nl">Tradução · translation</div>' +
+        r.lines.map(function(l){ return '<div class="ne" style="font-size:13px;margin-top:5px">' + esc(l.en) + '</div>'; }).join("") + '</div>';
+      box.style.display = "block";
+    } else { box.style.display = box.style.display === "none" ? "block" : "none"; }
   });
   on("[data-check]","click",function(){
     var ok = 0, tot = gaps.length;
