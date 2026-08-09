@@ -4,8 +4,13 @@
   "description": "Learn the thousand most useful words of European Portuguese through spaced repetition, flashcards, and quizzes.",
   "lang": "pt-PT",
   "dir": "ltr",
+  "id": "/",
   "start_url": ".",
   "scope": ".",
+  "shortcuts": [
+    { "name": "Rever hoje · review", "short_name": "Rever", "url": "./?go=review" },
+    { "name": "Leitura · reading", "short_name": "Leitura", "url": "./?go=leitura" }
+  ],
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#EBE6DB",

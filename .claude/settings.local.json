@@ -7,7 +7,10 @@
       "Bash(node -e ' *)",
       "Bash(grep -no \"versão[^<]\\\\{0,40\\\\}\\\\|BUILD[^<]\\\\{0,20\\\\}\\\\|v1[0-9] *·\\\\|Versão\" /Users/mike/portuguese-app/index.html)",
       "Bash(git commit -q -m 'Fix word-tap: entity corruption, touch target, line-toggle guard *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(sed -i '' 's/mil-palavras-v18/mil-palavras-v19/' sw.js)",
+      "Bash(sed -i '' 's/var APP_BUILD = \"v18\"/var APP_BUILD = \"v19\"/' index.html)",
+      "Bash(git commit -q -m 'Formalise the app: account management, legal, crash recovery, a11y *)"
     ]
   }
 }

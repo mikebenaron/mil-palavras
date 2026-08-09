@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-PT">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
@@ -324,6 +324,15 @@ input{font-family:inherit;font-size:inherit;color:inherit;background:none;border
 .passage{margin-top:8px}
 .rline{padding:12px 0;border-bottom:1px solid var(--rule);cursor:pointer}
 .rline .rpt{font-family:var(--serif);font-size:20px;line-height:1.5;color:var(--ink)}
+.legal p{font-size:14.5px;line-height:1.6;color:var(--ink);margin:0 0 13px;max-width:62ch}
+.legal p.en{color:var(--slate);font-size:13.5px;margin-top:-8px}
+.legal h2{font-family:var(--serif);font-size:21px;font-weight:400;margin:28px 0 10px;color:var(--ink)}
+.legal ul{margin:0 0 13px 18px;padding:0}
+.legal li{font-size:14.5px;line-height:1.6;color:var(--ink);margin-bottom:6px;max-width:60ch}
+.legal a{color:var(--terracotta);text-decoration:underline}
+.legal .updated{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--slate);margin-top:34px}
+.legalnav{display:flex;gap:14px;flex-wrap:wrap;margin-top:26px;padding-top:18px;border-top:1px solid var(--rule-3)}
+.legalnav button{font-size:12px;color:var(--slate);text-decoration:underline}
 /* Vertical padding on an inline element grows the touch target without
    changing the line box — fingers land between lines otherwise. */
 .wtap{cursor:pointer;border-radius:2px;padding:.3em .06em;margin:0 -.06em;
@@ -449,6 +458,57 @@ input{font-family:inherit;font-size:inherit;color:inherit;background:none;border
 </head>
 <body>
 <div id="app"></div>
+
+<!-- Crash net. Installed before every other script so a syntax error or a
+     failed data file can't leave a blank page with the user's progress
+     stranded in localStorage. A boot failure gets the full recovery screen;
+     an error after the app is up gets a dismissible bar instead. -->
+<script>
+(function(){
+  var shown = false;
+  function raw(){ try { return window.localStorage.getItem("milpalavras.v1") || ""; } catch(e){ return ""; } }
+  function panel(detail){
+    if (shown) return; shown = true;
+    var booted = document.getElementById("app") && document.getElementById("app").children.length > 0;
+    var d = document.createElement("div");
+    d.setAttribute("role","alert");
+    d.style.cssText = booted
+      ? "position:fixed;left:0;right:0;bottom:0;z-index:9999;background:#5A1F1F;color:#FCFBF8;padding:14px 18px;font:14px/1.45 system-ui,sans-serif"
+      : "position:fixed;inset:0;z-index:9999;background:#F6F0E4;color:#241A14;padding:32px 24px;font:15px/1.55 system-ui,sans-serif;overflow:auto";
+    d.innerHTML = (booted
+        ? '<b>Algo correu mal · something went wrong.</b> O teu progresso está guardado.'
+        : '<h1 style="font:italic 34px/1.1 Georgia,serif;margin:0 0 12px">Mil Palavras</h1>' +
+          '<p><b>A aplicação não arrancou · the app failed to start.</b></p>' +
+          '<p style="color:#6B5F55">O teu progresso continua guardado neste aparelho. Recarrega a página; se continuar, copia o teu progresso para o teres em segurança.<br>' +
+          'Your progress is still saved on this device. Reload the page; if it keeps failing, copy your progress out so you have it safely.</p>') +
+      '<div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">' +
+        '<button id="crRel" style="font:inherit;padding:10px 16px;cursor:pointer;background:#241A14;color:#FCFBF8;border:0">Recarregar · reload</button>' +
+        (raw() ? '<button id="crCopy" style="font:inherit;padding:10px 16px;cursor:pointer;background:transparent;color:inherit;border:1px solid currentColor">Copiar progresso · copy progress</button>' : '') +
+        '<button id="crHide" style="font:inherit;padding:10px 16px;cursor:pointer;background:transparent;color:inherit;border:1px solid currentColor">Fechar · dismiss</button>' +
+      '</div>' +
+      '<pre id="crDet" style="margin-top:14px;font-size:11px;white-space:pre-wrap;opacity:.75;max-height:120px;overflow:auto"></pre>';
+    document.body.appendChild(d);
+    d.querySelector("#crDet").textContent = String(detail || "").slice(0, 600);
+    d.querySelector("#crRel").onclick = function(){ location.reload(); };
+    d.querySelector("#crHide").onclick = function(){ d.remove(); shown = false; };
+    var c = d.querySelector("#crCopy");
+    if (c) c.onclick = function(){
+      var t = document.createElement("textarea");
+      t.value = raw(); document.body.appendChild(t); t.select();
+      try { document.execCommand("copy"); c.textContent = "Copiado · copied"; }
+      catch(e){ c.textContent = "Copia manualmente · copy manually"; }
+      t.remove();
+    };
+  }
+  window.addEventListener("error", function(e){
+    if (e && e.target && e.target !== window && e.target.tagName) return; // ignore asset 404s
+    panel(e && (e.message || e.error));
+  });
+  window.addEventListener("unhandledrejection", function(e){
+    panel(e && e.reason && (e.reason.message || e.reason));
+  });
+})();
+</script>
 <!-- Accounts + sync must be defined BEFORE the app script below, so the boot
      sequence can gate on auth (window.MilSync) instead of hitting the fallback. -->
 <script src="vendor/supabase.js"></script>
@@ -1592,7 +1652,16 @@ var app = document.getElementById("app");
 function motionOK(){
   try { return !window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch(e){ return true; }
 }
+/* The document is pt-PT, so the English half of every bilingual pair has to be
+   marked or a screen reader (and speech synthesis) gives it Portuguese
+   phonetics. Done once per render rather than in every template. */
+var EN_SEL = ".ren,.fle,.fhe,.introe,.screentitle .en,.sub,.aimark,.pcap";
+function markEnglish(root){
+  var n = root.querySelectorAll(EN_SEL);
+  for (var i=0;i<n.length;i++) n[i].setAttribute("lang","en");
+}
 function h(html){ app.className=""; app.removeAttribute("data-screen"); app.innerHTML = html; window.scrollTo(0,0);
+  markEnglish(app);
   var wb = document.getElementById("winfobar"); if (wb) wb.classList.remove("show"); }
 
 /* ---- progress + review-forecast data (for the home screen) ---- */
@@ -1919,6 +1988,8 @@ function go(n){
   if (n === "conj") return renderDrillPicker("conjugacao");
   if (n === "gdrill") return renderDrillPicker("gramatica");
   if (n === "review") return startReview();
+  if (n === "privacidade") return renderPrivacy();
+  if (n === "termos") return renderTerms();
 }
 
 /* ============================ deck picker ============================ */
@@ -2599,7 +2670,7 @@ function escapeRe(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
 /* Shown in Definições — bump with CACHE_VERSION in sw.js so a device can be
    checked against the deployed build. */
-var APP_BUILD = "v18";
+var APP_BUILD = "v19";
 
 /* ---- tap-a-word info: contractions, verb infinitives, word meanings ---- */
 var CONTRACTIONS = {
@@ -2850,6 +2921,122 @@ function renderReading(id){
 }
 
 /* ============================ settings ============================ */
+/* ============================ legal ============================ */
+var CONTACT_EMAIL = "ola@milpalavras.app";
+var LEGAL_UPDATED = "9 de agosto de 2026";
+
+function renderPrivacy(){
+  var m = '<a href="mailto:' + CONTACT_EMAIL + '">' + CONTACT_EMAIL + '</a>';
+  renderPage("settings", screenTitle("Privacidade", "privacy") +
+    '<div class="legal">' +
+    '<p>Esta aplicação guarda o mínimo necessário para o teu progresso te acompanhar.</p>' +
+    '<p class="en">This app stores the minimum needed for your progress to follow you between devices. Here is all of it, in plain words.</p>' +
+
+    '<h2>O que é guardado · what is stored</h2>' +
+    '<ul>' +
+      '<li><b>O teu email</b> — para iniciares sessão. · <span lang="en">Your email address, so you can sign in.</span></li>' +
+      '<li><b>A tua palavra-passe</b>, cifrada pelo Supabase. Nunca a vemos. · <span lang="en">Your password, hashed by Supabase. It is never visible to us.</span></li>' +
+      '<li><b>O teu progresso</b> — que palavras viste, os agendamentos, a série de dias. · <span lang="en">Your learning progress: which words you have seen, review schedules, streak and grades.</span></li>' +
+    '</ul>' +
+    '<p>É tudo. Não há mais nada.</p>' +
+    '<p class="en">That is the complete list. Nothing else is collected.</p>' +
+
+    '<h2>Onde fica · where it lives</h2>' +
+    '<p>No teu aparelho, e — se iniciares sessão — numa base de dados alojada pelo Supabase, para sincronizar entre aparelhos.</p>' +
+    '<p class="en">On your device, and — if you sign in — in a database hosted by Supabase so it can sync across your devices. If you never sign in, nothing leaves your device at all.</p>' +
+
+    '<h2>O que <em>não</em> fazemos · what we do not do</h2>' +
+    '<ul>' +
+      '<li>Sem análise de utilização, sem rastreio, sem publicidade. · <span lang="en">No analytics, no tracking pixels, no advertising.</span></li>' +
+      '<li>Os teus dados nunca são vendidos nem partilhados. · <span lang="en">Your data is never sold, rented or shared with anyone.</span></li>' +
+      '<li>Sem cookies de rastreio. Guardamos apenas o token que te mantém com sessão iniciada. · <span lang="en">No tracking cookies — only the sign-in token that keeps you logged in.</span></li>' +
+    '</ul>' +
+    '<p>Uma ressalva honesta: quem aloja o site (GitHub Pages) e a base de dados (Supabase) mantém registos de servidor normais, como qualquer site.</p>' +
+    '<p class="en">One honest caveat: the site host (GitHub Pages) and the database host (Supabase) keep ordinary server logs, such as IP addresses, the way every website does. That is theirs, not something we add or read.</p>' +
+
+    '<h2>Os teus direitos · your rights</h2>' +
+    '<ul>' +
+      '<li><b>Levar</b> — Definições → Copiar progresso exporta tudo. · <span lang="en">Export everything from Settings → copy progress.</span></li>' +
+      '<li><b>Apagar</b> — Definições → Apagar a conta remove a conta e o progresso guardado. · <span lang="en">Settings → delete account removes your account and stored progress.</span></li>' +
+      '<li><b>Perguntar</b> — escreve para ' + m + '. · <span lang="en">Ask anything about your data at that address.</span></li>' +
+    '</ul>' +
+
+    '<h2>Crianças · children</h2>' +
+    '<p>Não é dirigida a menores de 13 anos e não recolhemos dados sabendo que pertencem a uma criança.</p>' +
+    '<p class="en">This app is not directed at children under 13, and we do not knowingly collect their data.</p>' +
+
+    '<h2>Alterações · changes</h2>' +
+    '<p>Se isto mudar, a data abaixo muda com ele.</p>' +
+    '<p class="en">If this notice changes, the date below changes with it.</p>' +
+
+    '<div class="updated">Atualizado · updated ' + esc(LEGAL_UPDATED) + '</div>' +
+    legalNav("privacidade") +
+    '</div>', renderPrivacy, "settings", "Definições · settings");
+  bindNav(); bindLegalNav();
+}
+
+function renderTerms(){
+  var m = '<a href="mailto:' + CONTACT_EMAIL + '">' + CONTACT_EMAIL + '</a>';
+  renderPage("settings", screenTitle("Termos", "terms") +
+    '<div class="legal">' +
+    '<p>Mil Palavras é uma ajuda ao estudo, oferecida tal como está.</p>' +
+    '<p class="en">Mil Palavras is a study aid, offered as it is.</p>' +
+
+    '<h2>Usar a aplicação · using the app</h2>' +
+    '<p>Usa-a para aprender. És responsável por manteres a tua palavra-passe segura.</p>' +
+    '<p class="en">Use it to learn. You are responsible for keeping your password safe and for what happens under your account.</p>' +
+
+    '<h2>O conteúdo · the content</h2>' +
+    '<p>Os textos vêm de fontes de domínio público ou com licença aberta, adaptados para português europeu e sempre com a fonte indicada. Os textos escritos por IA estão marcados com <b>✳</b>.</p>' +
+    '<p class="en">Reading passages come from public-domain or openly-licensed sources, adapted into European Portuguese and always attributed. Passages written or adapted by AI carry a ✳ mark so you always know what you are reading.</p>' +
+    '<p>Fazemos o possível pela exatidão, mas isto não substitui um professor nem um dicionário.</p>' +
+    '<p class="en">We try hard to be accurate, but this is not a substitute for a teacher or a dictionary, and no guarantee of correctness is given.</p>' +
+
+    '<h2>Disponibilidade · availability</h2>' +
+    '<p>A aplicação funciona sem ligação à internet. A sincronização depende de um serviço externo e pode falhar ou mudar.</p>' +
+    '<p class="en">The app works offline. Syncing depends on an external service and may occasionally be unavailable or change. Keep your own copy of anything you would hate to lose — Settings → copy progress.</p>' +
+
+    '<h2>Responsabilidade · liability</h2>' +
+    '<p>Fornecida "tal como está", sem garantias. Não somos responsáveis por perdas resultantes do uso.</p>' +
+    '<p class="en">Provided "as is", without warranties of any kind. We are not liable for any loss arising from use of the app, to the extent the law allows.</p>' +
+
+    '<h2>Contacto · contact</h2>' +
+    '<p>' + m + '</p>' +
+
+    '<div class="updated">Atualizado · updated ' + esc(LEGAL_UPDATED) + '</div>' +
+    legalNav("termos") +
+    '</div>', renderTerms, "settings", "Definições · settings");
+  bindNav(); bindLegalNav();
+}
+
+/* Set when the legal pages are opened from the login screen, so "back" returns
+   there instead of dropping a signed-out visitor into Settings. */
+var LEGAL_BACK = null;
+
+function legalNav(current){
+  return '<div class="legalnav">' +
+    (current === "privacidade" ? "" : '<button data-legal="privacidade">Privacidade · privacy</button>') +
+    (current === "termos" ? "" : '<button data-legal="termos">Termos · terms</button>') +
+    '<button data-legal="back">' + (LEGAL_BACK ? "Voltar · back" : "Definições · settings") + '</button></div>';
+}
+function bindLegalNav(){
+  on("[data-legal]","click",function(e){
+    var t = e.currentTarget.getAttribute("data-legal");
+    if (t === "privacidade") return renderPrivacy();
+    if (t === "termos") return renderTerms();
+    if (LEGAL_BACK){ var f = LEGAL_BACK; LEGAL_BACK = null; return f(); }
+    return renderSettings();
+  });
+}
+
+/* Used by the login screen, which lives outside the app's router. */
+window.MilLegal = {
+  show: function(kind, onBack){
+    LEGAL_BACK = onBack || null;
+    return kind === "termos" ? renderTerms() : renderPrivacy();
+  }
+};
+
 function renderSettings(){
   var d = S.set.dir;
   var toggles = CLASS_ORDER.map(function(k){
@@ -2866,6 +3053,11 @@ function renderSettings(){
 
   renderPage("settings", screenTitle("Definições", "settings") +
 
+    // Account first — signing out is something people look for immediately.
+    '<div class="sectlabel" style="margin:0 0 10px">Conta · account</div>' +
+    '<div id="syncMount"></div>' +
+
+    '<div class="sectlabel" style="margin:30px 0 8px">Estudo · study</div>' +
     '<div class="field"><div class="fl">Palavras novas por dia</div><div class="fle">new words per day</div>' +
     '<div class="fh">Quantas palavras novas entram em rotação por dia.</div>' +
     '<div class="fhe">How many unseen words enter rotation each day.</div>' +
@@ -2900,9 +3092,6 @@ function renderSettings(){
     '<div class="fhe" style="margin-bottom:6px">Desliga uma classe e nada de novo dela entra; o que já anda em rotação continua a voltar. · Turn a class off and nothing new from it is introduced.</div>' +
     toggles +
 
-    '<div class="sectlabel" style="margin:30px 0 10px">Conta · account</div>' +
-    '<div id="syncMount"></div>' +
-
     '<div class="sectlabel" style="margin:30px 0 10px">Os teus dados · your data</div>' +
     '<div class="datasum">' + (S.reviews||0) + ' classificados · ' + Object.keys(S.prog).length + ' de ' + CARDS.length +
       ' começadas · melhor série ' + (S.best||0) + ' dias</div>' +
@@ -2913,7 +3102,12 @@ function renderSettings(){
       '<button class="btn outline block" style="color:var(--vinho);box-shadow:inset 0 0 0 1.4px var(--vinho)" data-act="wipe">Apagar tudo · erase all progress</button>' +
     '</div>' +
     '<div id="io"></div>' +
-    '<div class="fhe" style="margin-top:26px;text-align:center;opacity:.7">versão · build ' + APP_BUILD + '</div>', renderSettings);
+
+    '<div class="legalnav" style="justify-content:center">' +
+      '<button data-legal="privacidade">Privacidade · privacy</button>' +
+      '<button data-legal="termos">Termos · terms</button>' +
+    '</div>' +
+    '<div class="fhe" style="margin-top:16px;text-align:center;opacity:.7">versão · build ' + APP_BUILD + '</div>', renderSettings);
 
   on("[data-per]","click",function(e){
     var dlt = +e.currentTarget.getAttribute("data-per");
@@ -2963,6 +3157,7 @@ function renderSettings(){
     }
   });
   bindNav();
+  bindLegalNav();
   if (window.MilSync) window.MilSync.mount();
 }
 
@@ -3025,16 +3220,25 @@ function attachSync(){
     },
     persist: function(){ Store.save(S); },   // raw save: no timestamp bump, no re-push
     save: save,
-    render: function(){ renderHome(); },
+    render: function(){ openStartScreen(); },
     freshState: freshState
   });
   return true;
+}
+/* Home, unless a manifest shortcut (?go=review) asked for somewhere else. */
+function openStartScreen(){
+  var m = /[?&]go=([a-z]+)/.exec(location.search);
+  if (m){
+    history.replaceState(null, "", location.pathname);
+    try { return go(m[1]); } catch(e){ /* unknown target — fall through to home */ }
+  }
+  renderHome();
 }
 function startApp(){
   var attached = attachSync();
   // Dev-only: skip the auth gate on localhost (never runs on the real domain).
   if ((location.hostname === "localhost" || location.hostname === "127.0.0.1") &&
-      location.search.indexOf("dev=1") > -1) { renderHome(); return; }
+      location.search.indexOf("dev=1") > -1) { openStartScreen(); return; }
   if (attached && window.MilSync.gate) window.MilSync.gate();
   else renderHome();   // fallback if the account layer failed to load
 }

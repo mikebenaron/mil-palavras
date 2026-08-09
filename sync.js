@@ -69,6 +69,12 @@
   function setupListener() {
     if (listening) return;
     listening = true;
+    // Offline-first: say so plainly, and flush anything pending on reconnect.
+    window.addEventListener("offline", function () { setStatus("Sem ligação · offline — saved on this device"); });
+    window.addEventListener("online", function () {
+      setStatus("A sincronizar… · reconnecting…");
+      if (session && bridge) doPush(bridge.get());
+    });
     client.auth.onAuthStateChange(function (evt, s) {
       session = s || null;
       if (evt === "SIGNED_IN") enterApp();
@@ -199,10 +205,18 @@
         '<button class="btn fill block auth-primary" data-act="submit">' + (signup ? "Criar conta · create account" : "Entrar · sign in") + '</button>' +
         (signup ? "" : '<button class="auth-link" data-act="forgot">Esqueci-me · forgot password?</button>') +
         '<div class="auth-status" id="authStatus"></div>' +
+        // People should be able to read these *before* handing over an email.
+        '<div class="auth-legal">Ao criares conta aceitas os <button data-legal-auth="termos">Termos</button> ' +
+          'e a <button data-legal-auth="privacidade">Privacidade</button>.' +
+          '<span lang="en"><br>By creating an account you agree to the Terms and Privacy notice.</span></div>' +
       '</div></div>';
 
     each(root, "[data-mode]", "click", function (e) {
       renderLogin(e.currentTarget.getAttribute("data-mode"));
+    });
+    each(root, "[data-legal-auth]", "click", function (e) {
+      var kind = e.currentTarget.getAttribute("data-legal-auth");
+      if (window.MilLegal) window.MilLegal.show(kind, function () { renderLogin(mode); });
     });
     var pass = root.querySelector("#authPass");
     pass.addEventListener("keydown", function (e) { if (e.key === "Enter") submit(); });
@@ -295,18 +309,84 @@
     if (!client) { el.innerHTML = hint("Accounts aren't switched on in this build yet."); return; }
     if (!session) { el.innerHTML = hint("You're not signed in."); return; }
     el.innerHTML =
-      hint("Signed in as <b>" + esc(session.user.email || "your account") + "</b>. Progress syncs to every device you sign in on.") +
+      '<div class="acctrow"><div class="acctlabel">Sessão iniciada como · signed in as</div>' +
+        '<div class="acctmail">' + esc(session.user.email || "your account") + '</div></div>' +
       '<div class="foot" style="text-align:left" id="syncStatus">' + esc(status || "Synced") + '</div>' +
+      hint("O progresso acompanha-te em cada aparelho onde iniciares sessão. · Progress follows you on every device you sign in on.") +
       '<div class="stack mt">' +
-        '<button class="btn quiet" data-sync="pull">Sync now</button>' +
-        '<button class="btn quiet" style="color:var(--vinho)" data-sync="signout">Sign out</button>' +
+        '<button class="btn outline block" data-sync="pull">Sincronizar agora · sync now</button>' +
+        '<button class="btn outline block" data-sync="pw">Mudar palavra-passe · change password</button>' +
+        '<button class="btn outline block" data-sync="signout">Terminar sessão · sign out</button>' +
+      '</div>' +
+      '<div id="acctIO"></div>' +
+      '<div class="stack mt">' +
+        '<button class="btn outline block danger" data-sync="delete">Apagar a conta · delete account</button>' +
       '</div>';
-    el.querySelector('[data-sync="pull"]').addEventListener("click", function () {
-      if (session) pullQuiet();
-    });
-    el.querySelector('[data-sync="signout"]').addEventListener("click", function () {
+
+    var io = el.querySelector("#acctIO");
+    each(el, '[data-sync="pull"]', "click", function () { if (session) pullQuiet(); });
+    each(el, '[data-sync="signout"]', "click", function () {
       client.auth.signOut();   // SIGNED_OUT → resetLocal + login screen
     });
+
+    each(el, '[data-sync="pw"]', "click", function () {
+      io.removeAttribute("data-armed");
+      io.innerHTML =
+        '<div class="acctbox"><input id="pw1" type="password" autocomplete="new-password" placeholder="Nova palavra-passe · new password">' +
+        '<button class="btn block mt" data-sync="pwsave">Guardar · save</button>' +
+        '<div class="foot" id="pwMsg"></div></div>';
+      each(io, '[data-sync="pwsave"]', "click", function () {
+        var v = io.querySelector("#pw1").value;
+        var msg = io.querySelector("#pwMsg");
+        if (!v || v.length < 8) { msg.textContent = "Use pelo menos 8 caracteres · use at least 8 characters."; return; }
+        msg.textContent = "A guardar… · saving…";
+        client.auth.updateUser({ password: v })
+          .then(function (res) {
+            msg.textContent = res.error ? friendly(res.error.message)
+              : "Palavra-passe alterada · password changed.";
+            if (!res.error) io.querySelector("#pw1").value = "";
+          })
+          .catch(function () { msg.textContent = "Não foi possível alterar · couldn't change it."; });
+      });
+    });
+
+    // Two-step confirm, same arm-then-confirm pattern as "erase all progress".
+    each(el, '[data-sync="delete"]', "click", function () {
+      if (io.getAttribute("data-armed") === "del") { doDeleteAccount(io); return; }
+      io.setAttribute("data-armed", "del");
+      io.innerHTML = '<div class="acctbox warn">Isto apaga a tua conta e todo o progresso guardado. Não há como voltar atrás. ' +
+        'Toca outra vez em <em>Apagar a conta</em> para confirmar.<br><br>' +
+        'This deletes your account and all saved progress. This cannot be undone. ' +
+        'Tap <em>Delete account</em> once more to confirm.</div>';
+    });
+  }
+
+  // Removes the user's synced data, then asks the server to remove the login
+  // itself. Deleting an auth user needs the service-role key, which must never
+  // ship in the browser — so that half runs in a Supabase Edge Function.
+  function doDeleteAccount(io) {
+    io.innerHTML = '<div class="acctbox">A apagar… · deleting…</div>';
+    client.from("progress").delete().eq("user_id", session.user.id)
+      .then(function () {
+        return client.functions.invoke("delete-account").catch(function (e) { return { error: e }; });
+      })
+      .then(function (res) {
+        var fnMissing = res && res.error;
+        try { localStorage.clear(); } catch (e) {}
+        return client.auth.signOut().then(function () {
+          if (fnMissing) {
+            // Data is gone and the session is over, but be honest that the
+            // login record itself may still exist server-side.
+            alert("O teu progresso foi apagado e a sessão terminada.\n\n" +
+              "Your progress has been deleted and you've been signed out. " +
+              "The login record itself is removed once the delete-account function is deployed — " +
+              "email the address in the privacy notice to have it removed now.");
+          }
+        });
+      })
+      .catch(function () {
+        io.innerHTML = '<div class="acctbox warn">Não foi possível apagar · couldn\'t delete. Tenta de novo.</div>';
+      });
   }
 
   /* --------------------------- utils -------------------------- */
@@ -321,6 +401,17 @@
   function injectStyles() {
     if (document.getElementById("mil-auth-css")) return;
     var css =
+      /* account panel inside Definições */
+      ".auth-legal{margin-top:18px;text-align:center;font-size:11px;line-height:1.6;color:var(--slate)}" +
+      ".auth-legal button{font:inherit;color:var(--terracotta);text-decoration:underline}" +
+      ".acctrow{padding:12px 0;border-bottom:1px solid var(--rule-3)}" +
+      ".acctlabel{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--slate)}" +
+      ".acctmail{font-family:var(--serif);font-size:19px;color:var(--ink);margin-top:4px;word-break:break-all}" +
+      ".acctbox{margin-top:12px;padding:14px;box-shadow:inset 0 0 0 1px var(--rule-3);font-size:13px;line-height:1.5;color:var(--slate)}" +
+      ".acctbox.warn{box-shadow:inset 0 0 0 1.4px var(--vinho);color:var(--vinho)}" +
+      ".acctbox input{width:100%;padding:12px;font:inherit;font-size:16px;box-shadow:inset 0 0 0 1px var(--rule-3);background:var(--paper);color:var(--ink)}" +
+      ".acctbox .mt{margin-top:10px}" +
+      ".btn.danger{color:var(--vinho);box-shadow:inset 0 0 0 1.4px var(--vinho)}" +
       ".auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--paper);" +
         "padding:calc(env(safe-area-inset-top,0px) + 40px) 26px calc(env(safe-area-inset-bottom,0px) + 32px)}" +
       ".auth-inner{width:100%;max-width:360px}" +
