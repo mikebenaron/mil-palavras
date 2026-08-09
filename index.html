@@ -324,8 +324,11 @@ input{font-family:inherit;font-size:inherit;color:inherit;background:none;border
 .passage{margin-top:8px}
 .rline{padding:12px 0;border-bottom:1px solid var(--rule);cursor:pointer}
 .rline .rpt{font-family:var(--serif);font-size:20px;line-height:1.5;color:var(--ink)}
-.wtap{cursor:pointer;border-radius:2px}
-.wtap:active{background:oklch(55% .16 40 / .16)}
+/* Vertical padding on an inline element grows the touch target without
+   changing the line box — fingers land between lines otherwise. */
+.wtap{cursor:pointer;border-radius:2px;padding:.3em .06em;margin:0 -.06em;
+  -webkit-tap-highlight-color:oklch(55% .16 40 / .22)}
+.wtap:active{background:oklch(55% .16 40 / .18)}
 @media(hover:hover){.wtap:hover{background:oklch(55% .16 40 / .10)}}
 .winfobar{position:fixed;left:0;right:0;bottom:0;z-index:60;background:var(--ink);color:var(--paper);
   transform:translateY(110%);transition:transform .18s ease;padding-bottom:var(--safe-b);box-shadow:0 -8px 30px rgba(40,25,15,.25)}
@@ -2594,6 +2597,10 @@ function renderReadingPicker(){
 
 function escapeRe(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
+/* Shown in Definições — bump with CACHE_VERSION in sw.js so a device can be
+   checked against the deployed build. */
+var APP_BUILD = "v18";
+
 /* ---- tap-a-word info: contractions, verb infinitives, word meanings ---- */
 var CONTRACTIONS = {
   "ao":"a + o","à":"a + a","aos":"a + os","às":"a + as",
@@ -2613,16 +2620,20 @@ var CONTRACTIONS = {
   "comigo":"com + mim","contigo":"com + ti","connosco":"com + nós","convosco":"com + vós"
 };
 function cleanWord(s){ return String(s).toLowerCase().replace(/^[^a-zà-ÿ]+/,"").replace(/[^a-zà-ÿ-]+$/,""); }
-var _formMap = null, _vocabMap = null;
+var _formMap = null, _vocabMap = null, _normMap = null;
+/* Accent-stripped key, used ONLY as a last resort on a lemma guess — never on
+   the word as typed, or "esta"/"está" would collide. */
+function deacc(s){ return s.normalize ? s.normalize("NFD").replace(/[̀-ͯ]/g,"") : s; }
 function buildLookups(){
   if (_formMap) return;
-  _formMap = {}; _vocabMap = {};
+  _formMap = {}; _vocabMap = {}; _normMap = {};
   CARDS.forEach(function(c){
     if (c.c === "conjugacao"){ var k = cleanWord(c.p); if (k && !_formMap[k]) _formMap[k] = { inf:c.v, e:(c.w && c.w.e) || "" }; }
     else if (!c.k){
       var base = cleanWord(stripArticle(c.p)), full = cleanWord(c.p);
       if (base && !_vocabMap[base]) _vocabMap[base] = { p:c.p, e:c.e, ipa:c.ipa, cls:c.c };
       if (full && !_vocabMap[full]) _vocabMap[full] = { p:c.p, e:c.e, ipa:c.ipa, cls:c.c };
+      if (base && !_normMap[deacc(base)]) _normMap[deacc(base)] = _vocabMap[base];
     }
   });
 }
@@ -2633,12 +2644,32 @@ function wordInfo(raw){
   if (CONTRACTIONS[w]) return { tag:"contração · contraction", word:raw, detail:CONTRACTIONS[w] };
   if (_formMap[w]){ var f = _formMap[w]; return { tag:"verbo · verb", word:raw, detail:"infinitivo · infinitive: " + f.inf + (f.e ? " — " + f.e : "") }; }
   if (_vocabMap[w]){ var v = _vocabMap[w]; return { tag:(CLASS_LABEL[v.cls] || "palavra") + " · " + (CLASS_EN[v.cls] || "word"), word:v.p, detail:v.e + (v.ipa ? " · " + v.ipa : "") }; }
-  return { tag:"", word:raw, detail:"sem informação · no info found" };
+  // plural -> singular guesses: casas->casa, mares->mar, animais->animal
+  var guesses = [];
+  if (/s$/.test(w)) guesses.push(w.slice(0,-1));
+  if (/es$/.test(w)) guesses.push(w.slice(0,-2));
+  if (/ais$|eis$|ois$|uis$/.test(w)) guesses.push(w.slice(0,-2) + "l");
+  if (/ões$|ães$/.test(w)) guesses.push(w.slice(0,-3) + "ão");
+  for (var gi=0; gi<guesses.length; gi++){
+    var g = guesses[gi];
+    var v2 = _vocabMap[g] || _normMap[deacc(g)];
+    if (v2) return { tag:(CLASS_LABEL[v2.cls] || "palavra") + " · " + (CLASS_EN[v2.cls] || "word"), word:raw, detail:"plural de · plural of " + v2.p + " — " + v2.e };
+    if (_formMap[g]) return { tag:"verbo · verb", word:raw, detail:"infinitivo · infinitive: " + _formMap[g].inf };
+  }
+  return { tag:"fora do baralho · outside the deck", word:raw,
+    detail:"Esta palavra não está nas 1000. · This word isn't in the 1000-word deck, so there's no entry for it yet." };
 }
+/* Tokenise BEFORE escaping, so the word regex can never match the letters
+   inside an HTML entity (&quot; &amp;). Hyphens split, so "chama-se" gives
+   a tappable "chama" (-> chamar) and "se". */
 function tapWords(text){
-  return esc(text).replace(/([A-Za-zÀ-ÿ]+(?:-[A-Za-zÀ-ÿ]+)*)/g, function(m){
-    return '<span class="wtap" data-w="' + m + '">' + m + '</span>';
-  });
+  var s = String(text), re = /[A-Za-zÀ-ÿ]+/g, out = "", last = 0, m;
+  while ((m = re.exec(s)) !== null){
+    out += esc(s.slice(last, m.index)) +
+      '<span class="wtap" data-w="' + esc(m[0]) + '">' + esc(m[0]) + '</span>';
+    last = m.index + m[0].length;
+  }
+  return out + esc(s.slice(last));
 }
 function showWordInfo(raw){
   var info = wordInfo(raw); if (!info) return;
@@ -2738,7 +2769,12 @@ function renderReading(id){
     function(){ renderReading(id); }, "leitura", "Leitura · reading");
 
   on("[data-rm]","click",function(e){ READMODE = e.currentTarget.getAttribute("data-rm"); renderReading(id); });
-  on("[data-i]","click",function(e){ e.currentTarget.classList.toggle("show"); });
+  // Word tap wins over the line's reveal-translation tap. The guard is a
+  // belt-and-braces backup for stopPropagation below.
+  on("[data-i]","click",function(e){
+    if (e.target && e.target.closest && e.target.closest(".wtap")) return;
+    e.currentTarget.classList.toggle("show");
+  });
   on("[data-w]","click",function(e){ e.stopPropagation(); showWordInfo(e.currentTarget.getAttribute("data-w")); });
   on("[data-revealall]","click",function(){
     var n = app.querySelectorAll(".rline"); for (var j=0;j<n.length;j++) n[j].classList.add("show");
@@ -2876,7 +2912,8 @@ function renderSettings(){
       '<button class="btn outline block" data-act="resetleech">Repor difíceis · reset trouble words</button>' +
       '<button class="btn outline block" style="color:var(--vinho);box-shadow:inset 0 0 0 1.4px var(--vinho)" data-act="wipe">Apagar tudo · erase all progress</button>' +
     '</div>' +
-    '<div id="io"></div>', renderSettings);
+    '<div id="io"></div>' +
+    '<div class="fhe" style="margin-top:26px;text-align:center;opacity:.7">versão · build ' + APP_BUILD + '</div>', renderSettings);
 
   on("[data-per]","click",function(e){
     var dlt = +e.currentTarget.getAttribute("data-per");

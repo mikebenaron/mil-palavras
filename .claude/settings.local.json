@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s https://milpalavras.app/index.html?cb=__TRACKED_VAR__)",
+      "Bash(curl -s https://milpalavras.app/sw.js?cb=__TRACKED_VAR__)",
+      "Bash(curl -s https://milpalavras.app/content.js?cb=__TRACKED_VAR__)",
+      "Bash(node -e ' *)",
+      "Bash(grep -no \"versão[^<]\\\\{0,40\\\\}\\\\|BUILD[^<]\\\\{0,20\\\\}\\\\|v1[0-9] *·\\\\|Versão\" /Users/mike/portuguese-app/index.html)",
+      "Bash(git commit -q -m 'Fix word-tap: entity corruption, touch target, line-toggle guard *)",
+      "Bash(git push *)"
+    ]
+  }
+}
