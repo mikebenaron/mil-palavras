@@ -38,6 +38,11 @@ if (!KEY || !REGION) {
 }
 
 const VOICE = process.env.AZURE_VOICE || "pt-PT-DuarteNeural";
+/* 48kHz matters for this language specifically: a 24kHz sample rate cuts
+   everything above ~12kHz, which is where the /ʃ/ sibilants live, and European
+   Portuguese is full of them ("os livros" = "ush LEE-vrush"). The first pass
+   used 24kHz/48kbps and sounded scratchy on exactly those sounds. */
+const FORMAT = process.env.AZURE_FORMAT || "audio-48khz-192kbitrate-mono-mp3";
 const RATE = Number(process.env.AZURE_RATE || 0);   // 0 = the voice's native pace
 const RATE_MS = Number(process.env.TTS_RATE_MS || 250);
 const argv = process.argv.slice(2);
@@ -85,7 +90,7 @@ if (!ONLY_WORDS) {
 }
 
 const chars = jobs.reduce((n, j) => n + j.text.length, 0);
-console.log(`${jobs.length} clips · ${chars.toLocaleString()} characters · voice ${VOICE}${RATE ? " @" + RATE + "%" : " (native pace)"}`);
+console.log(`${jobs.length} clips · ${chars.toLocaleString()} characters · ${FORMAT} · voice ${VOICE}${RATE ? " @" + RATE + "%" : " (native pace)"}`);
 
 /* ---- synthesis ---------------------------------------------------- */
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -107,7 +112,7 @@ async function speak(text) {
       headers: {
         "Ocp-Apim-Subscription-Key": KEY,
         "Content-Type": "application/ssml+xml",
-        "X-Microsoft-OutputFormat": "audio-24khz-48kbitrate-mono-mp3",
+        "X-Microsoft-OutputFormat": FORMAT,
         "User-Agent": "mil-palavras",
       },
       body: ssml,
