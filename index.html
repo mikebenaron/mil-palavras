@@ -618,7 +618,21 @@ function markStudied(){
 function progOf(id){ return S.prog[id]; }
 function isDue(id){ var p = S.prog[id]; return p && p.d <= dayNo(); }
 function known(id){ var p = S.prog[id]; return p && p.iv >= 21; }
-function leech(id){ var p = S.prog[id]; return p && (p.l||0) >= 6; }
+/* A word you've forgotten this many times is "difícil" — one threshold used
+   everywhere (the trouble tile, the weak-drill filters, the reset button), so
+   the count you see and the cards you get are always the same set. */
+var TROUBLE_AT = 4;
+/* `l` only ever counts up, so "forgotten 4+ times" alone would mark a word
+   difficult for life. It also has to be a word you haven't nailed yet — once
+   the interval reaches the 21-day "known" mark, it leaves the list by itself. */
+function leech(id){ var p = S.prog[id]; return p && (p.l||0) >= TROUBLE_AT && p.iv < 21; }
+/* Trouble cards, worst first. */
+function troubleList(){
+  var out = [];
+  for (var i=0;i<CARDS.length;i++){ var c = CARDS[i]; if (leech(c.i)) out.push(c); }
+  out.sort(function(a,b){ return (S.prog[b.i].l||0) - (S.prog[a.i].l||0); });
+  return out;
+}
 
 function dueList(){
   var t = dayNo(), out = [];
@@ -1564,10 +1578,10 @@ function renderDrillPicker(kind){
       drow("__rfx", "Reflexive verbs", "chamo-me, lembro-me, senta-te",
         countCards(function(c){ return c.c === "conjugacao" && c.rf; })) +
       drow("__weakc", "The ones you keep missing", "conjugations you've failed repeatedly",
-        countCards(function(c){ return c.c === "conjugacao" && (S.prog[c.i] || {}).l >= 3; }));
+        countCards(function(c){ return c.c === "conjugacao" && (S.prog[c.i] || {}).l >= TROUBLE_AT; }));
   } else {
     extra = drow("__weakg", "The ones you keep missing", "grammar you've failed repeatedly",
-      countCards(function(c){ return c.c === "gramatica" && (S.prog[c.i] || {}).l >= 3; }));
+      countCards(function(c){ return c.c === "gramatica" && (S.prog[c.i] || {}).l >= TROUBLE_AT; }));
   }
 
   var rows = groups.map(function(g){
@@ -1603,8 +1617,8 @@ function renderDrillPicker(kind){
     else if (d === "__big") pool = CARDS.filter(function(c){ return c.c === "conjugacao" && BIGNINE.indexOf(c.v) >= 0; });
     else if (d === "__irr") pool = CARDS.filter(function(c){ return c.c === "conjugacao" && /irregular/.test(c.s); });
     else if (d === "__rfx") pool = CARDS.filter(function(c){ return c.c === "conjugacao" && c.rf; });
-    else if (d === "__weakc") pool = CARDS.filter(function(c){ return c.c === "conjugacao" && (S.prog[c.i] || {}).l >= 3; });
-    else if (d === "__weakg") pool = CARDS.filter(function(c){ return c.c === "gramatica" && (S.prog[c.i] || {}).l >= 3; });
+    else if (d === "__weakc") pool = CARDS.filter(function(c){ return c.c === "conjugacao" && (S.prog[c.i] || {}).l >= TROUBLE_AT; });
+    else if (d === "__weakg") pool = CARDS.filter(function(c){ return c.c === "gramatica" && (S.prog[c.i] || {}).l >= TROUBLE_AT; });
     else pool = CARDS.filter(function(c){ return c.c === kind && c.s === d; });
     startDrill(pool);
   });
@@ -1749,7 +1763,7 @@ function renderHome(){
 function renderHomePhone(){
   var due = dueList().length;
   var allowance = Math.min(newAllowance(), newPool().length);
-  var learned = Object.keys(S.prog).length;
+  var learned = deckProgress().started;   /* vocabulary only — must agree with the Progresso row */
   var day = Math.max(1, S.seenDays||0);
   var c = wordOfDay();
   var pt = variants(c.p)[0];
@@ -1757,8 +1771,13 @@ function renderHomePhone(){
   for (var i=0;i<CARDS.length;i++){ var cc = CARDS[i].c;
     if (cc==="conjugacao") conj++; else if (cc!=="gramatica"){ vocab++; if (cc==="substantivo") nouns++; } }
 
+  var trouble = troubleList();
   var items = [
-    {n:"01",p:"Rever hoje",e:"review",nav:"review",tail:(due+allowance>0?String(due+allowance):"—")},
+    {n:"01",p:"Rever hoje",e:"review",nav:"review",tail:(due+allowance>0?String(due+allowance):"—")}
+  ];
+  // Only shown once you actually have trouble words — an empty tile would be noise.
+  if (trouble.length) items.push({p:"Difíceis",e:"trouble words",nav:"trouble",tail:String(trouble.length)});
+  items = items.concat([
     {n:"02",p:"Cartões",e:"flashcards",nav:"flash",tail:String(vocab)},
     {n:"03",p:"Escolha",e:"multiple choice",nav:"choice",tail:""},
     {n:"04",p:"Escrever",e:"type it",nav:"type",tail:""},
@@ -1769,7 +1788,7 @@ function renderHomePhone(){
     {n:"09",p:"Leitura",e:"reading",nav:"leitura",tail:String(READINGS.length)},
     {n:"10",p:"Método",e:"method",nav:"method",tail:""},
     {n:"11",p:"Definições",e:"settings",nav:"settings",tail:""}
-  ];
+  ]);
   var tiles = items.map(function(it, ti){
     return '<button class="tile-nav" data-nav="'+it.nav+'">'+
       '<div class="tno">'+pad2(ti+1)+(it.tail?' · '+esc(it.tail):'')+'</div>'+
@@ -1833,14 +1852,18 @@ function homeCounts(){
   return { totC:totC, startC:startC, vocabDue:vocabDue, verbDue:verbDue, gramDue:gramDue, dueN:due.length };
 }
 function railItems(active){
+  var nTrouble = troubleList().length;
   var nav = [
-    {k:"home",p:"Início",e:"Home"},{k:"review",p:"Rever",e:"Review"},
+    {k:"home",p:"Início",e:"Home"},{k:"review",p:"Rever",e:"Review"}
+  ];
+  if (nTrouble) nav.push({k:"trouble",p:"Difíceis",e:"Trouble words · " + nTrouble});
+  nav = nav.concat([
     {k:"flash",p:"Cartões",e:"Flashcards"},{k:"choice",p:"Escolha",e:"Multiple choice"},
     {k:"type",p:"Escrever",e:"Type it"},{k:"gender",p:"O ou A?",e:"Noun gender"},
     {k:"conj",p:"Conjugações",e:"Conjugations"},{k:"browse",p:"Dicionário",e:"Dictionary"},
     {k:"grammar",p:"Gramática",e:"Grammar"},{k:"leitura",p:"Leitura",e:"Reading"},
     {k:"method",p:"Método",e:"Method"},{k:"settings",p:"Definições",e:"Settings"}
-  ];
+  ]);
   return nav.map(function(n){
     return '<button class="'+(n.k===active?"on":"")+'" data-nav="'+n.k+'">'+esc(n.p)+
       '<span class="rle">'+esc(n.e)+'</span></button>';
@@ -1885,7 +1908,7 @@ function renderPage(activeNav, inner, self, backNav, backLabel){
 function renderHomeWeb(){
   var due = dueList().length;
   var allowance = Math.min(newAllowance(), newPool().length);
-  var learned = Object.keys(S.prog).length;
+  var learned = deckProgress().started;   /* vocabulary only — must agree with the Progresso row */
   var reviewN = due + allowance;
   var c = wordOfDay();
   var pt = variants(c.p)[0];
@@ -1988,6 +2011,7 @@ function go(n){
   if (n === "conj") return renderDrillPicker("conjugacao");
   if (n === "gdrill") return renderDrillPicker("gramatica");
   if (n === "review") return startReview();
+  if (n === "trouble") return startTrouble();
   if (n === "privacidade") return renderPrivacy();
   if (n === "termos") return renderTerms();
 }
@@ -2038,6 +2062,15 @@ function genderPool(){
 }
 
 /* ============================ review session ============================ */
+/* The words you keep forgetting, worst first — regardless of when they're due.
+   Grading here feeds the same scheduler, so a word you finally master ages out
+   of the list once its interval passes 21 days. */
+function startTrouble(){
+  rollDay();
+  var q = troubleList();
+  if (!q.length){ toast("Sem palavras difíceis · no trouble words"); return renderHome(); }
+  startSession("review", q);
+}
 function startReview(){
   rollDay();
   var due = shuffle(dueList());
@@ -2670,7 +2703,7 @@ function escapeRe(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
 /* Shown in Definições — bump with CACHE_VERSION in sw.js so a device can be
    checked against the deployed build. */
-var APP_BUILD = "v19";
+var APP_BUILD = "v20";
 
 /* ---- tap-a-word info: contractions, verb infinitives, word meanings ---- */
 var CONTRACTIONS = {
@@ -3093,12 +3126,13 @@ function renderSettings(){
     toggles +
 
     '<div class="sectlabel" style="margin:30px 0 10px">Os teus dados · your data</div>' +
-    '<div class="datasum">' + (S.reviews||0) + ' classificados · ' + Object.keys(S.prog).length + ' de ' + CARDS.length +
-      ' começadas · melhor série ' + (S.best||0) + ' dias</div>' +
+    '<div class="datasum">' + (S.reviews||0) + ' classificados · ' + deckProgress().started + ' de ' + WORDS.length +
+      ' palavras começadas · ' + (Object.keys(S.prog).length - deckProgress().started) + ' exercícios · melhor série ' +
+      (S.best||0) + ' dias</div>' +
     '<div class="stack mt">' +
       '<button class="btn outline block" data-act="export">Copiar progresso · copy as text</button>' +
       '<button class="btn outline block" data-act="import">Colar progresso · paste back in</button>' +
-      '<button class="btn outline block" data-act="resetleech">Repor difíceis · reset trouble words</button>' +
+      '<button class="btn outline block" data-act="resetleech">Repor difíceis · reset trouble words (' + troubleList().length + ')</button>' +
       '<button class="btn outline block" style="color:var(--vinho);box-shadow:inset 0 0 0 1.4px var(--vinho)" data-act="wipe">Apagar tudo · erase all progress</button>' +
     '</div>' +
     '<div id="io"></div>' +
@@ -3148,7 +3182,7 @@ function renderSettings(){
       });
     } else if (a === "resetleech") {
       var n = 0, t = dayNo();
-      for (var k in S.prog) { if ((S.prog[k].l||0) >= 6) { S.prog[k] = { r:0, e:2.5, iv:0, d:t, l:0 }; n++; } }
+      for (var k in S.prog) { if ((S.prog[k].l||0) >= TROUBLE_AT) { S.prog[k] = { r:0, e:2.5, iv:0, d:t, l:0 }; n++; } }
       save(); toast(n ? n + " words reset" : "No trouble words yet"); renderSettings();
     } else if (a === "wipe") {
       if (io.getAttribute("data-armed")) { S = freshState(); save(); toast("Progress erased"); renderHome(); return; }
@@ -3221,7 +3255,17 @@ function attachSync(){
     persist: function(){ Store.save(S); },   // raw save: no timestamp bump, no re-push
     save: save,
     render: function(){ openStartScreen(); },
-    freshState: freshState
+    freshState: freshState,
+    // True while a study session is running — an auto-pull must not swap the
+    // state out from under a session in progress.
+    busy: function(){ return !!SES; },
+    // Redraw whatever is on screen after remote progress has been applied,
+    // without navigating the user somewhere else.
+    refresh: function(){
+      if (SES) return;
+      if (LAST_RENDER) { try { LAST_RENDER(); return; } catch(e){} }
+      renderHome();
+    }
   });
   return true;
 }

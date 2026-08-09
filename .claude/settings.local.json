@@ -10,7 +10,10 @@
       "Bash(git push *)",
       "Bash(sed -i '' 's/mil-palavras-v18/mil-palavras-v19/' sw.js)",
       "Bash(sed -i '' 's/var APP_BUILD = \"v18\"/var APP_BUILD = \"v19\"/' index.html)",
-      "Bash(git commit -q -m 'Formalise the app: account management, legal, crash recovery, a11y *)"
+      "Bash(git commit -q -m 'Formalise the app: account management, legal, crash recovery, a11y *)",
+      "Bash(sed -i '' 's/for \\(var k in S.prog\\) { if \\(\\(S.prog\\\\[k\\\\].l||0\\) >= 6\\)/for \\(var k in S.prog\\) { if \\(\\(S.prog[k].l||0\\) >= TROUBLE_AT\\)/' index.html)",
+      "Bash(sed -i '' 's/\\(S.prog\\\\[c.i\\\\] || {}\\).l >= 3/\\(S.prog[c.i] || {}\\).l >= TROUBLE_AT/g' index.html)",
+      "Bash(git commit -q -m 'Fix three logic bugs found reading the code *)"
     ]
   }
 }

@@ -74,7 +74,10 @@
     window.addEventListener("online", function () {
       setStatus("A sincronizar… · reconnecting…");
       if (session && bridge) doPush(bridge.get());
+      maybePull();
     });
+    document.addEventListener("visibilitychange", maybePull);
+    window.addEventListener("focus", maybePull);
     client.auth.onAuthStateChange(function (evt, s) {
       session = s || null;
       if (evt === "SIGNED_IN") enterApp();
@@ -88,6 +91,7 @@
 
   function enterApp() {
     setStatus("Syncing…");
+    lastPull = Date.now();   // this counts as a pull; don't repeat it on first focus
     var p;
     try { p = syncUserData(); } catch (e) { p = Promise.reject(e); }
     Promise.resolve(p)
@@ -96,14 +100,33 @@
       .then(function () { bridge.render(); });   // always enter the app
   }
 
-  // Refresh from the server without navigating (used by "Sync now" in Settings).
+  // Refresh from the server without navigating. Used by "Sync now" and by the
+  // automatic pull when the app comes back to the foreground.
   function pullQuiet() {
+    lastPull = Date.now();
     setStatus("Syncing…");
     var p;
     try { p = syncUserData(); } catch (e) { p = Promise.reject(e); }
-    Promise.resolve(p)
-      .then(function () { setStatus("Synced · " + clock()); })
+    return Promise.resolve(p)
+      .then(function () {
+        setStatus("Synced · " + clock());
+        // Remote progress may have replaced local state — redraw what's on screen.
+        if (bridge && bridge.refresh) bridge.refresh();
+      })
       .catch(function () { setStatus("Offline — will sync later"); });
+  }
+
+  // Push happens on every save, but nothing ever pulled except at sign-in — so
+  // a second device left open never saw work done elsewhere. Pull when the app
+  // comes back to the foreground, throttled, and never mid-session.
+  var lastPull = 0;
+  var PULL_GAP = 20000;
+  function maybePull() {
+    if (!client || !session) return;
+    if (document.hidden) return;
+    if (bridge && bridge.busy && bridge.busy()) return;   // don't disturb a running session
+    if (Date.now() - lastPull < PULL_GAP) return;
+    pullQuiet();
   }
 
   function tsOf(x) { return (x && x._updatedAt) || 0; }
@@ -312,7 +335,8 @@
       '<div class="acctrow"><div class="acctlabel">Sessão iniciada como · signed in as</div>' +
         '<div class="acctmail">' + esc(session.user.email || "your account") + '</div></div>' +
       '<div class="foot" style="text-align:left" id="syncStatus">' + esc(status || "Synced") + '</div>' +
-      hint("O progresso acompanha-te em cada aparelho onde iniciares sessão. · Progress follows you on every device you sign in on.") +
+      hint("O progresso sincroniza sozinho — ao guardar, e sempre que voltas à aplicação. O botão abaixo é só para forçares. · " +
+        "Progress syncs on its own: on every save, and whenever you return to the app. The button below is only to force it.") +
       '<div class="stack mt">' +
         '<button class="btn outline block" data-sync="pull">Sincronizar agora · sync now</button>' +
         '<button class="btn outline block" data-sync="pw">Mudar palavra-passe · change password</button>' +
