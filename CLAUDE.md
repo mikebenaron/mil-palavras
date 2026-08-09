@@ -103,6 +103,29 @@ Only cache responses that succeeded (`res.ok && status === 200`). Caching a 404
 once served it forever and broke the app until a version bump — that bug is
 fixed, don't reintroduce it.
 
+## Scheduler — FSRS
+
+FSRS-4.5 replaced SM-2. Two state variables per card: **stability** (how long
+the memory lasts) and **difficulty** (how hard this word is for you), scheduled
+for 90% target recall. `FSRS_W` are the published default weights fitted on
+millions of reviews — **do not hand-tune them**.
+
+Cards keep their SM-2 fields (`iv`, `d`, `r`, `l`) so everything built on them
+still works — "known" at `iv >= 21`, the review forecast, trouble words. `s`,
+`df` and `lr` are added alongside. Legacy cards migrate lazily on their next
+review: the interval that was working becomes the stability estimate, ease plus
+lapses become the difficulty, and **the due date is never disturbed**.
+
+`firstEver` must be decided *before* `fsrsMigrate` runs — migration invents a
+stability, which otherwise disguises a brand-new card as one with history and
+collapses every first-review interval to 1 day.
+
+`previewIv()` runs the real scheduler on a copy of the card, so the number on
+the grade button can never drift from what pressing it does.
+
+First-review intervals: Outra vez → today, Difícil → 1d, Bom → 4d, Fácil → 14d.
+(Under SM-2, Fácil gave 3 days, which is what prompted the change.)
+
 ## Scheduler semantics
 
 Asked about repeatedly; get these right:
