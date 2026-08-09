@@ -1,6 +1,6 @@
 /* Mil Palavras service worker — offline app shell.
    Bump CACHE_VERSION whenever the app files change to force an update. */
-const CACHE_VERSION = 'mil-palavras-v5';
+const CACHE_VERSION = 'mil-palavras-v6';
 const APP_SHELL = [
   './',
   './index.html',
@@ -12,6 +12,7 @@ const APP_SHELL = [
   './vendor/supabase.js',
   './sync-config.js',
   './sync.js',
+  './content.js',
   './fonts.css'
 ];
 // Font woff2 files are cached on demand by the fetch handler (cache-first).
