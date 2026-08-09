@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mil Palavras — voice comparison</title>
+<style>
+  :root{--paper:#F6F0E4;--ink:#241A14;--slate:#6B5F55;--terra:#B4552D;--rule:#DAD1C0}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:28px 20px 80px}
+  .wrap{max-width:760px;margin:0 auto}
+  h1{font:italic 34px/1.1 Georgia,serif;margin:0 0 6px}
+  .lede{color:var(--slate);margin:0 0 22px;max-width:60ch}
+  .bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--rule)}
+  button{font:inherit;cursor:pointer;border:1px solid var(--ink);background:transparent;color:var(--ink);padding:8px 14px;border-radius:0}
+  button.primary{background:var(--ink);color:var(--paper)}
+  button:disabled{opacity:.4;cursor:default}
+  .card{border:1px solid var(--rule);padding:18px;margin-bottom:16px;background:#FCFBF8}
+  .pt{font:22px/1.35 Georgia,serif;margin-bottom:4px}
+  .why{font-size:12.5px;color:var(--slate);margin-bottom:14px}
+  .opts{display:flex;flex-direction:column;gap:8px}
+  .opt{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .tag{font:600 13px/1 ui-monospace,monospace;width:22px}
+  .name{font-size:12px;color:var(--slate)}
+  audio{height:34px;flex:1;min-width:220px}
+  .pick{padding:5px 10px;font-size:12.5px}
+  .pick.on{background:var(--terra);border-color:var(--terra);color:#fff}
+  .tally{position:fixed;left:0;right:0;bottom:0;background:var(--ink);color:var(--paper);
+    padding:12px 20px;font-size:13.5px}
+  .tally b{color:#E8A87C}
+  .err{padding:16px;border:1px solid var(--terra);color:var(--terra)}
+  code{background:#EDE6D6;padding:2px 5px;font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Which voice is actually Portuguese?</h1>
+  <p class="lede">Each phrase was chosen to expose where a Brazilian voice gives itself away. Voices are
+    labelled A, B, C… — pick the best for each phrase before revealing which provider is which,
+    so the brand names can't sway your ear.</p>
+
+  <div class="bar">
+    <button class="primary" id="reveal">Reveal the providers</button>
+    <button id="reset">Clear my picks</button>
+  </div>
+
+  <div id="list"></div>
+</div>
+<div class="tally" id="tally">No picks yet.</div>
+
+<script>
+const LETTERS = "ABCDEFGH";
+let manifest = null, order = [], picks = {}, revealed = false;
+
+fetch("out/manifest.json")
+  .then(r => { if (!r.ok) throw new Error("no manifest"); return r.json(); })
+  .then(m => { manifest = m; start(); })
+  .catch(() => {
+    document.getElementById("list").innerHTML =
+      '<div class="err"><b>No audio generated yet.</b><br><br>Run:<br>' +
+      '<code>node tools/voice-test/generate.mjs</code><br><br>' +
+      'with at least one provider key set in your shell.</div>';
+  });
+
+function start(){
+  // One shuffle for the whole session, so a given letter means the same voice
+  // on every phrase — otherwise you can't form an opinion about a voice.
+  order = manifest.voices.slice();
+  for (let i = order.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  try { picks = JSON.parse(localStorage.getItem("voicetest.picks") || "{}"); } catch(e){ picks = {}; }
+  render();
+}
+
+function render(){
+  document.getElementById("list").innerHTML = manifest.phrases.map(p => `
+    <div class="card">
+      <div class="pt">${esc(p.text)}</div>
+      <div class="why">${esc(p.tests)}</div>
+      <div class="opts">
+        ${order.map((v, i) => `
+          <div class="opt">
+            <span class="tag">${LETTERS[i]}</span>
+            <audio controls preload="none" src="out/${encodeURIComponent(v)}/${p.id}.mp3"></audio>
+            <button class="pick ${picks[p.id] === v ? "on" : ""}"
+                    data-phrase="${p.id}" data-voice="${esc(v)}">best</button>
+            <span class="name">${revealed ? esc(pretty(v)) : ""}</span>
+          </div>`).join("")}
+      </div>
+    </div>`).join("");
+
+  document.querySelectorAll(".pick").forEach(b => b.onclick = () => {
+    const ph = b.getAttribute("data-phrase"), v = b.getAttribute("data-voice");
+    picks[ph] = picks[ph] === v ? undefined : v;
+    if (picks[ph] === undefined) delete picks[ph];
+    localStorage.setItem("voicetest.picks", JSON.stringify(picks));
+    render();
+  });
+  tally();
+}
+
+function tally(){
+  const counts = {};
+  Object.values(picks).forEach(v => counts[v] = (counts[v] || 0) + 1);
+  const n = Object.keys(picks).length;
+  const el = document.getElementById("tally");
+  if (!n){ el.textContent = "No picks yet — play a few and choose the best for each."; return; }
+  const ranked = Object.entries(counts).sort((a,b) => b[1] - a[1]);
+  el.innerHTML = `${n}/${manifest.phrases.length} judged &nbsp;·&nbsp; ` +
+    ranked.map(([v,c]) => {
+      const label = revealed ? pretty(v) : LETTERS[order.indexOf(v)];
+      return `<b>${esc(label)}</b> ${c}`;
+    }).join(" &nbsp; ");
+}
+
+function pretty(v){
+  const [provider, voice] = v.split("__");
+  return provider + " · " + (voice || "");
+}
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+document.getElementById("reveal").onclick = () => { revealed = !revealed;
+  document.getElementById("reveal").textContent = revealed ? "Hide the providers" : "Reveal the providers";
+  render(); };
+document.getElementById("reset").onclick = () => { picks = {};
+  localStorage.removeItem("voicetest.picks"); render(); };
+</script>
+</body>
+</html>

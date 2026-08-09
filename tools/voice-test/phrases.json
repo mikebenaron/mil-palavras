@@ -1,0 +1,22 @@
+[
+  { "id": "01-reduction",   "text": "de nada",                     "tests": "Unstressed vowel reduction. EU-PT swallows it (d'nada); BR gives a full 'dee NAH-dah'." },
+  { "id": "02-final-s",     "text": "os livros estão nas caixas",  "tests": "Final s as /ʃ/ — 'ush LEE-vrush'. BR says 'ooz LEE-vrooz'. The single loudest tell." },
+  { "id": "03-open-o",      "text": "até à próxima",               "tests": "Open ó. Should be PRAW-, not PRO-. The one we corrected by hand." },
+  { "id": "04-open-o-2",    "text": "a história de Portugal",      "tests": "Second open ó, plus the dark l in Portugal." },
+  { "id": "05-nasal",       "text": "não, muito bem, irmã",        "tests": "Nasal vowels, and whether 'muito' comes out as MUIN-tu." },
+  { "id": "06-ao-plural",   "text": "as conjugações portuguesas",  "tests": "-ões plural nasal diphthong." },
+  { "id": "07-eu-vocab",    "text": "apanhei o autocarro e o comboio", "tests": "EU-PT words BR voices often mangle (BR: ônibus, trem)." },
+  { "id": "08-eu-vocab-2",  "text": "a casa de banho e o pequeno-almoço", "tests": "More EU-PT-only vocabulary, plus the hyphenated compound." },
+  { "id": "09-estar-a",     "text": "estou a comer o pequeno-almoço", "tests": "The EU-PT progressive. BR would gerund it (estou comendo)." },
+  { "id": "10-clitic",      "text": "chama-se Miguel e levanta-se cedo", "tests": "Enclitic pronouns — BR prosody puts them elsewhere." },
+  { "id": "11-lh-nh",       "text": "o trabalho da senhora",       "tests": "lh and nh palatals." },
+  { "id": "12-rr",          "text": "o carro corre na rua",        "tests": "Initial and double r. EU-PT uvular vs BR guttural h-sound." },
+  { "id": "13-e-mute",      "text": "telefone de repente",         "tests": "The famously deleted unstressed e. EU-PT: t'l'FON d'r'PENT." },
+  { "id": "14-ei",          "text": "o primeiro dinheiro",         "tests": "The ei diphthong, realised differently north/south and in BR." },
+  { "id": "15-numbers",     "text": "vinte e três euros e cinquenta cêntimos", "tests": "Numbers and currency — BR says centavos." },
+  { "id": "16-question",    "text": "Onde fica a estação de comboios, por favor?", "tests": "Question intonation across a full sentence." },
+  { "id": "17-long",        "text": "Há um novo festival de música em Oeiras, perto de Lisboa.", "tests": "A real passage line — natural pacing over a full sentence." },
+  { "id": "18-long-2",      "text": "Quem não arrisca não petisca, diz o ditado português.", "tests": "A proverb: rhythm, and two nasals in sequence." },
+  { "id": "19-word-list",   "text": "obrigado. obrigada. desculpe. com licença.", "tests": "Isolated words with pauses — how flashcards will actually sound." },
+  { "id": "20-single",      "text": "amanhã",                      "tests": "A single word, no context. The hardest case for any TTS to stress correctly." }
+]
