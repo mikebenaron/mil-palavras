@@ -184,20 +184,20 @@
     mode = mode || "signin";
     var signup = mode === "signup";
     var root = document.getElementById("app");
+    root.className = "";
     root.innerHTML =
-      '<div class="auth-wrap"><div class="auth-card">' +
-        '<div class="auth-brand"><div class="auth-badge">' + BADGE + '</div>' +
-          '<div class="auth-title">Mil Palavras</div>' +
-          '<div class="auth-sub">European Portuguese</div></div>' +
-        '<div class="seg auth-seg">' +
-          '<button class="' + (signup ? "" : "on") + '" data-mode="signin">Sign in</button>' +
-          '<button class="' + (signup ? "on" : "") + '" data-mode="signup">Create account</button>' +
+      '<div class="auth-wrap"><div class="auth-inner">' +
+        '<div class="auth-brand"><div class="auth-wm">Mil Palavras</div>' +
+          '<div class="auth-eyebrow">Português europeu · caderno pessoal</div></div>' +
+        '<div class="auth-seg">' +
+          '<button class="' + (signup ? "" : "on") + '" data-mode="signin">Entrar</button>' +
+          '<button class="' + (signup ? "on" : "") + '" data-mode="signup">Criar conta</button>' +
         '</div>' +
         '<input id="authEmail" type="email" inputmode="email" autocomplete="email" placeholder="Email">' +
-        '<input id="authPass" type="password" autocomplete="' + (signup ? "new-password" : "current-password") + '" placeholder="Password">' +
-        (signup ? '<div class="auth-note">At least 6 characters.</div>' : "") +
-        '<button class="btn auth-primary" data-act="submit">' + (signup ? "Create account" : "Sign in") + '</button>' +
-        (signup ? "" : '<button class="auth-link" data-act="forgot">Forgot password?</button>') +
+        '<input id="authPass" type="password" autocomplete="' + (signup ? "new-password" : "current-password") + '" placeholder="Palavra-passe · password">' +
+        (signup ? '<div class="auth-note">Pelo menos 6 caracteres · at least 6 characters.</div>' : "") +
+        '<button class="btn fill block auth-primary" data-act="submit">' + (signup ? "Criar conta · create account" : "Entrar · sign in") + '</button>' +
+        (signup ? "" : '<button class="auth-link" data-act="forgot">Esqueci-me · forgot password?</button>') +
         '<div class="auth-status" id="authStatus"></div>' +
       '</div></div>';
 
@@ -252,13 +252,14 @@
   // Shown when the user returns from a password-reset email.
   function renderSetPassword() {
     var root = document.getElementById("app");
+    root.className = "";
     root.innerHTML =
-      '<div class="auth-wrap"><div class="auth-card">' +
-        '<div class="auth-brand"><div class="auth-badge">' + BADGE + '</div>' +
-          '<div class="auth-title">Set a new password</div></div>' +
-        '<input id="authPass" type="password" autocomplete="new-password" placeholder="New password">' +
-        '<div class="auth-note">At least 6 characters.</div>' +
-        '<button class="btn auth-primary" data-act="save">Save password</button>' +
+      '<div class="auth-wrap"><div class="auth-inner">' +
+        '<div class="auth-brand"><div class="auth-wm">Mil Palavras</div>' +
+          '<div class="auth-eyebrow">Nova palavra-passe · new password</div></div>' +
+        '<input id="authPass" type="password" autocomplete="new-password" placeholder="Nova palavra-passe · new password">' +
+        '<div class="auth-note">Pelo menos 6 caracteres · at least 6 characters.</div>' +
+        '<button class="btn fill block auth-primary" data-act="save">Guardar · save password</button>' +
         '<div class="auth-status" id="authStatus"></div>' +
       '</div></div>';
     root.querySelector('[data-act="save"]').addEventListener("click", function () {
@@ -320,25 +321,25 @@
   function injectStyles() {
     if (document.getElementById("mil-auth-css")) return;
     var css =
-      ".auth-wrap{min-height:100%;display:flex;align-items:center;justify-content:center;" +
-        "padding:32px 20px;padding-top:calc(env(safe-area-inset-top,0px) + 40px);" +
-        "padding-bottom:calc(env(safe-area-inset-bottom,0px) + 32px)}" +
-      ".auth-card{width:100%;max-width:380px;background:var(--tile);border:1px solid rgba(16,36,63,.10);" +
-        "border-radius:16px;padding:26px 22px 24px;box-shadow:0 12px 44px rgba(16,36,63,.10)}" +
-      ".auth-brand{text-align:center;margin-bottom:18px}" +
-      ".auth-badge{width:54px;height:54px;margin:0 auto 12px}.auth-badge svg{width:100%;height:100%;border-radius:8px}" +
-      ".auth-title{font-family:var(--serif);font-size:25px;color:var(--ink);line-height:1.15}" +
-      ".auth-sub{font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--cobalt-lt);margin-top:6px}" +
-      ".auth-seg{margin-bottom:4px}" +
-      ".auth-card input{width:100%;padding:12px 13px;margin-top:10px;border:1px solid rgba(16,36,63,.18);" +
-        "border-radius:10px;background:var(--plaster);font-size:16px;color:var(--ink);-webkit-appearance:none}" +
-      ".auth-card input:focus{outline:none;border-color:var(--cobalt);background:var(--tile)}" +
-      ".auth-note{font-size:11.5px;color:var(--slate);margin-top:8px}" +
-      ".auth-primary{width:100%;margin-top:16px}" +
-      ".auth-link{display:block;width:100%;text-align:center;margin-top:14px;color:var(--cobalt);" +
-        "font-size:13px;background:none;border:none;cursor:pointer}" +
+      ".auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--paper);" +
+        "padding:calc(env(safe-area-inset-top,0px) + 40px) 26px calc(env(safe-area-inset-bottom,0px) + 32px)}" +
+      ".auth-inner{width:100%;max-width:360px}" +
+      ".auth-brand{text-align:center;margin-bottom:26px}" +
+      ".auth-wm{font-family:var(--serif);font-style:italic;font-size:40px;color:var(--ink);line-height:1}" +
+      ".auth-eyebrow{font-size:9px;letter-spacing:.26em;text-transform:uppercase;color:var(--terracotta);font-weight:700;margin-top:10px}" +
+      ".auth-seg{display:flex;margin-bottom:6px}" +
+      ".auth-seg button{flex:1;text-align:center;padding:11px 0;font-size:12.5px;font-weight:600;" +
+        "box-shadow:inset 0 0 0 1px var(--rule-3);color:var(--slate)}" +
+      ".auth-seg button.on{background:var(--ink);color:var(--paper);box-shadow:none}" +
+      ".auth-inner input{width:100%;padding:13px;margin-top:10px;background:var(--card);border:0;border-radius:0;" +
+        "box-shadow:inset 0 0 0 1px var(--rule-2);color:var(--ink);font-size:16px;-webkit-appearance:none}" +
+      ".auth-inner input:focus{outline:none;box-shadow:inset 0 0 0 2px var(--terracotta)}" +
+      ".auth-note{font-size:11.5px;color:var(--slate-en);margin-top:8px}" +
+      ".auth-primary{margin-top:16px}" +
+      ".auth-link{display:block;width:100%;text-align:center;margin-top:14px;color:var(--terracotta);" +
+        "font-size:12.5px;font-weight:600;background:none;border:none;cursor:pointer}" +
       ".auth-status{margin-top:14px;text-align:center;font-size:12.5px;color:var(--slate);min-height:16px;line-height:1.45}" +
-      ".auth-status.err{color:var(--vinho)}.auth-status.ok{color:var(--verde)}";
+      ".auth-status.err{color:var(--vinho)}.auth-status.ok{color:var(--teal)}";
     var s = document.createElement("style");
     s.id = "mil-auth-css";
     s.textContent = css;
