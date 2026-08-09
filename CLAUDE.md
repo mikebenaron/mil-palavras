@@ -33,6 +33,11 @@ Live at **https://milpalavras.app** (GitHub Pages, apex domain + `www` CNAME).
 | `index.html` | The whole app: design system `<style>`, `window.__DATA__` (990 vocab cards), and one big IIFE |
 | `readings.js` | `window.MIL_READINGS` — 101 graded passages (A1–B2) |
 | `content.js` | `window.MIL_CONTENT` — per-word pronunciation, examples, notes |
+
+`content.js` is keyed by the **exact Portuguese string**, but six words exist as
+two cards each with different word classes — `a` (article + preposition), `se`
+(pronoun + conjunction), and `melhor` / `pior` / `perto` / `longe` (adjective +
+adverb). They share one content entry, so its note must cover both senses.
 | `sync.js` / `sync-config.js` | Supabase auth + progress sync (publishable key only) |
 | `sw.js` | Service worker: versioned app-shell cache + **durable** audio cache |
 | `audio/` | ~185MB of pre-generated speech, committed deliberately |
