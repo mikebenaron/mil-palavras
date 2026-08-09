@@ -129,9 +129,27 @@ Commit and push to `main`; GitHub Pages rebuilds. Verify with:
 curl -s https://milpalavras.app/sw.js | grep CACHE_VERSION
 ```
 
+## Speaking (Falar) — pronunciation assessment
+
+Azure Pronunciation Assessment, `pt-PT`. Accuracy / fluency / completeness are
+scored per word and phoneme; **prosody is `en-US` only**, so don't promise it.
+
+The key must never reach the browser: `supabase/functions/speech-token` mints a
+10-minute authorization token per signed-in user, cached client-side for 9
+minutes. The 454KB SDK in `vendor/speech-sdk.js` is **lazy-loaded on first use
+and deliberately absent from the service-worker precache** — don't add it.
+
+The privacy notice discloses that Falar sends audio to Microsoft, that only the
+score returns, and that no recording is kept. **If that data flow ever changes,
+the notice must change with it** — the same applies to the conversation
+partner (#20), which would break the "nothing leaves your device" line.
+
 ## Outstanding (needs the user, not code)
 
 - `ola@milpalavras.app` is published in the privacy/terms pages but **does not
   exist yet** — needs a GoDaddy forwarder.
 - `supabase functions deploy delete-account` — until deployed, account deletion
   removes data and signs out but leaves the login record, and the app says so.
+- `supabase secrets set AZURE_SPEECH_KEY=... AZURE_SPEECH_REGION=uksouth` then
+  `supabase functions deploy speech-token` — until deployed, Falar shows
+  "assessment isn't switched on yet" instead of scoring.
