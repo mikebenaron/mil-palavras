@@ -21,6 +21,19 @@ import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(HERE, "out");
+const ROOT = path.resolve(HERE, "../..");
+
+/* Load keys from a gitignored .env at the repo root, so they live in exactly
+   one place, outside version control, and never need to be pasted anywhere. */
+try {
+  const raw = await fs.readFile(path.join(ROOT, ".env"), "utf8");
+  for (const line of raw.split("\n")) {
+    const m = /^\s*(?:export\s+)?([A-Z0-9_]+)\s*=\s*(.*)\s*$/.exec(line);
+    if (!m) continue;
+    const val = m[2].replace(/^["']|["']$/g, "");
+    if (!process.env[m[1]]) process.env[m[1]] = val;   // real env wins
+  }
+} catch { /* no .env — fall back to the shell environment */ }
 const PHRASES = JSON.parse(await fs.readFile(path.join(HERE, "phrases.json"), "utf8"));
 const LIST_ONLY = process.argv.includes("--list-voices");
 
@@ -42,7 +55,7 @@ async function azureSpeak(voice, text) {
     `<speak version='1.0' xml:lang='pt-PT'><voice xml:lang='pt-PT' name='${voice}'>` +
     escapeXml(text) +
     `</voice></speak>`;
-  const res = await fetch(url, {
+  const res = await fetchRetry(url, {
     method: "POST",
     headers: {
       "Ocp-Apim-Subscription-Key": KEYS.azure,
@@ -52,7 +65,6 @@ async function azureSpeak(voice, text) {
     },
     body: ssml,
   });
-  if (!res.ok) throw new Error(`Azure ${res.status}: ${(await res.text()).slice(0, 200)}`);
   return Buffer.from(await res.arrayBuffer());
 }
 
@@ -110,6 +122,28 @@ async function elevenSpeak(voiceId, text) {
 
 /* ------------------------------------------------------------------ */
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* Azure's free F0 tier allows ~20 requests/minute and answers 429 when you
+   exceed it. Throttle between calls and back off when told to, so a long bulk
+   run finishes unattended instead of dying a third of the way through. */
+const RATE_MS = Number(process.env.TTS_RATE_MS || 0);
+
+async function fetchRetry(url, opts, tries = 5) {
+  for (let attempt = 1; ; attempt++) {
+    const res = await fetch(url, opts);
+    if (res.ok) return res;
+    const retryable = res.status === 429 || res.status >= 500;
+    if (!retryable || attempt >= tries) {
+      throw new Error(`${res.status}: ${(await res.text()).slice(0, 200)}`);
+    }
+    const after = Number(res.headers.get("retry-after"));
+    const wait = after ? after * 1000 : Math.min(60000, 2000 * 2 ** (attempt - 1));
+    process.stdout.write(res.status === 429 ? "~" : "!");
+    await sleep(wait);
+  }
+}
+
 function escapeXml(s) {
   return String(s).replace(/[<>&'"]/g, (c) =>
     ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" }[c])
@@ -132,7 +166,14 @@ async function run(label, speak) {
       await fs.writeFile(file, buf);
       ok++;
       process.stdout.write(".");
+      if (RATE_MS) await sleep(RATE_MS);
     } catch (e) {
+      // A rejected key fails identically for all 20 phrases — say it once and stop.
+      if (/^(401|403)/.test(e.message)) {
+        console.error(`\n  ${label}: key rejected (${e.message.slice(0, 3)}). ` +
+          `Check the key and that AZURE_SPEECH_REGION matches the resource's region.`);
+        break;
+      }
       process.stdout.write("x");
       console.error(`\n  ${label} / ${p.id}: ${e.message}`);
     }
