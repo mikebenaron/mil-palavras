@@ -333,6 +333,11 @@ input{font-family:inherit;font-size:inherit;color:inherit;background:none;border
 [data-listen] .lbl-stop{display:none}
 [data-listen].on .lbl-stop{display:inline}
 [data-listen].on .lbl-play{display:none}
+/* dictation: the sound is the prompt, so the play control is the focal point */
+.bigplay{width:96px;height:96px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  margin:18px auto 0;color:var(--paper);background:var(--ink)}
+.bigplay:active{opacity:.75}
+.bigplay.busy{background:var(--terracotta)}
 .dlbar{height:6px;background:var(--rule-3);margin:14px 0 8px;overflow:hidden}
 .dlbar span{display:block;height:100%;width:0;background:var(--teal);transition:width .25s ease}
 .legal p{font-size:14.5px;line-height:1.6;color:var(--ink);margin:0 0 13px;max-width:62ch}
@@ -2074,6 +2079,7 @@ function renderHomePhone(){
     {n:"02",p:"Cartões",e:"flashcards",nav:"flash",tail:String(vocab)},
     {n:"03",p:"Escolha",e:"multiple choice",nav:"choice",tail:""},
     {n:"04",p:"Escrever",e:"type it",nav:"type",tail:""},
+    {p:"Ditado",e:"dictation",nav:"listen",tail:""},
     {n:"05",p:"O ou A?",e:"noun gender",nav:"gender",tail:String(nouns)},
     {n:"06",p:"Conjugações",e:"conjugations",nav:"conj",tail:String(conj)},
     {n:"07",p:"Dicionário",e:"dictionary",nav:"browse",tail:String(CARDS.length)},
@@ -2152,7 +2158,8 @@ function railItems(active){
   if (nTrouble) nav.push({k:"trouble",p:"Difíceis",e:"Trouble words · " + nTrouble});
   nav = nav.concat([
     {k:"flash",p:"Cartões",e:"Flashcards"},{k:"choice",p:"Escolha",e:"Multiple choice"},
-    {k:"type",p:"Escrever",e:"Type it"},{k:"gender",p:"O ou A?",e:"Noun gender"},
+    {k:"type",p:"Escrever",e:"Type it"},{k:"listen",p:"Ditado",e:"Dictation"},
+    {k:"gender",p:"O ou A?",e:"Noun gender"},
     {k:"conj",p:"Conjugações",e:"Conjugations"},{k:"browse",p:"Dicionário",e:"Dictionary"},
     {k:"grammar",p:"Gramática",e:"Grammar"},{k:"leitura",p:"Leitura",e:"Reading"},
     {k:"method",p:"Método",e:"Method"},{k:"settings",p:"Definições",e:"Settings"}
@@ -2300,6 +2307,7 @@ function go(n){
   if (n === "flash") return renderDeckPicker("flash");
   if (n === "choice") return renderDeckPicker("choice");
   if (n === "type") return renderDeckPicker("type");
+  if (n === "listen") return renderDeckPicker("listen");
   if (n === "gender") return startSession("gender", genderPool());
   if (n === "conj") return renderDrillPicker("conjugacao");
   if (n === "gdrill") return renderDrillPicker("gramatica");
@@ -2310,10 +2318,10 @@ function go(n){
 }
 
 /* ============================ deck picker ============================ */
-var MODE_TITLE = { flash:"Flashcards", choice:"Multiple choice", type:"Type it", gender:"o or a?", review:"Review" };
+var MODE_TITLE = { flash:"Flashcards", choice:"Multiple choice", type:"Type it", gender:"o or a?", review:"Review", listen:"Dictation" };
 var MODE_LABEL = {
   review:["Rever","review"], flash:["Cartões","flashcards"], choice:["Escolha","multiple choice"],
-  type:["Escrever","type it"], gender:["O ou A?","noun gender"]
+  type:["Escrever","type it"], gender:["O ou A?","noun gender"], listen:["Ditado","dictation"]
 };
 function renderDeckPicker(mode){
   var ml = MODE_LABEL[mode] || [MODE_TITLE[mode], ""];
@@ -2340,6 +2348,9 @@ function renderDeckPicker(mode){
     else if (d === "__started") pool = CARDS.filter(function(c){ return S.prog[c.i]; });
     else if (d === "__weak") pool = CARDS.filter(function(c){ return (S.prog[c.i]||{}).l >= 3; });
     else pool = CARDS.filter(function(c){ return c.c === d; });
+    // Dictation is only possible where a recording exists — never ask someone
+    // to write down what the device voice guessed at.
+    if (mode === "listen") pool = pool.filter(function(c){ return !!Recorded.srcFor(c.p); });
     /* every other set keeps frequency order in flip mode; the random mix
        shuffles first, so it draws from the whole deck rather than the top of it */
     if (rnd) pool = shuffle(pool.slice()).slice(0, mode === "flash" ? 40 : 25);
@@ -2404,7 +2415,7 @@ function startSession(mode, queue){
   renderSession();
 }
 function sessionDir(c){
-  if (SES.mode === "type") return "en";
+  if (SES.mode === "type" || SES.mode === "listen") return "en";
   if (SES.mode === "gender") return "pt";
   if (c && c.k) return "en";        /* a drill always runs prompt → answer */
   var d = S.set.dir;
@@ -2425,7 +2436,7 @@ function renderSession(){
     '<div class="track"><span style="width:' + pct + '%"></span></div>';
 
   if (SES.mode === "choice") return renderChoice(head, c);
-  if (SES.mode === "type") return renderType(head, c);
+  if (SES.mode === "type" || SES.mode === "listen") return renderType(head, c);
   if (SES.mode === "gender") return renderGender(head, c);
   return renderFlip(head, c);
 }
@@ -2603,17 +2614,30 @@ function nextQ(){ SES.opts = null; SES.answered = false; SES.chosen = null; SES.
 /* ---- type it ---- */
 var ACCENTS = ["á","à","â","ã","ç","é","ê","í","ó","ô","õ","ú"];
 function renderType(head, c){
+  var listening = SES.mode === "listen";
   var accents = ACCENTS.map(function(a){ return '<button class="akey" data-acc="' + a + '">' + a + '</button>'; }).join("") +
     '<button class="akey" data-back="1" aria-label="backspace">⌫</button>';
   var v = SES.verdict;
   var vlabel = v ? (v.k === "ok" ? "Certo · correct" : v.k === "near" ? "Quase certo · almost" : "Não é bem · not quite") : "";
   var vwrong = v && v.k === "no";
   h(head +
-    '<div class="cardface" style="padding:12px 4px 6px">' +
-      '<div class="klass">escreve em português · write it in portuguese</div>' +
-      '<div class="typeprompt">' + esc(c.k ? c.q : c.e) + '</div>' +
-      (c.k && c.qs ? '<div class="ipa" style="margin-top:-16px;margin-bottom:10px">' + esc(c.qs) + '</div>' : '') +
-    '</div>' +
+    (listening
+      // Dictation: the prompt is the sound. Showing the English would give the
+      // answer away, so the ear is the only clue until it's been checked.
+      ? '<div class="cardface" style="padding:12px 4px 6px">' +
+          '<div class="klass">escreve o que ouves · write what you hear</div>' +
+          '<button class="bigplay" data-replay="1" aria-label="Play again">' +
+            '<svg width="34" height="34" viewBox="0 0 20 20" fill="none" stroke="currentColor" ' +
+            'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+            '<path d="M4 7.5h2.5L10 4.5v11L6.5 12.5H4z" fill="currentColor" stroke="none"/>' +
+            '<path d="M13 7.4a3.6 3.6 0 010 5.2"/><path d="M15.4 5a7 7 0 010 10"/></svg></button>' +
+          '<div class="pcap" style="margin-top:10px">toca para ouvir outra vez · tap to hear it again</div>' +
+        '</div>'
+      : '<div class="cardface" style="padding:12px 4px 6px">' +
+          '<div class="klass">escreve em português · write it in portuguese</div>' +
+          '<div class="typeprompt">' + esc(c.k ? c.q : c.e) + '</div>' +
+          (c.k && c.qs ? '<div class="ipa" style="margin-top:-16px;margin-bottom:10px">' + esc(c.qs) + '</div>' : '') +
+        '</div>') +
     '<input class="typeline" id="ans" autocapitalize="none" autocorrect="off" spellcheck="false" ' +
       'autocomplete="off" placeholder="…"' + (v ? " disabled" : "") + ' value="' + esc(SES.typed || "") + '">' +
     (v ? "" : '<div class="accents">' + accents + '</div>') +
@@ -2628,6 +2652,16 @@ function renderType(head, c){
   var input = document.getElementById("ans");
   if (!v) { input.focus(); }
   input.addEventListener("keydown", function(e){ if (e.key === "Enter") { e.preventDefault(); check(); } });
+
+  if (listening){
+    var playBtn = app.querySelector("[data-replay]");
+    var say = function(){ Speech.speak(c.p, playBtn); };
+    if (playBtn) playBtn.addEventListener("click", say);
+    // Autoplay only before the answer is checked. renderSession runs inside the
+    // tap that advanced the card, so iOS still counts this as user-initiated;
+    // if it's ever blocked, the replay button is right there.
+    if (!v) say();
+  }
   on("[data-acc]","click",function(e){
     var a = e.currentTarget.getAttribute("data-acc");
     var s = input.selectionStart || input.value.length;
@@ -2996,7 +3030,7 @@ function escapeRe(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
 /* Shown in Definições — bump with CACHE_VERSION in sw.js so a device can be
    checked against the deployed build. */
-var APP_BUILD = "v25";
+var APP_BUILD = "v26";
 
 /* ---- tap-a-word info: contractions, verb infinitives, word meanings ---- */
 var CONTRACTIONS = {
