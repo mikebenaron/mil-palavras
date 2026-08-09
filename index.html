@@ -726,6 +726,83 @@ function bookRow(attr, val, pt, en, sub, tail){
 /* Uses the voice already installed on the device, so it works with no connection.
    The whole point is European Portuguese, so a pt-BR voice is treated as a
    fallback and flagged rather than passed off as the real thing. */
+/* Pre-generated European Portuguese (Azure pt-PT Duarte, native pace).
+   Files are matched by the exact text the generator spoke, so nothing at the
+   call sites has to change — and anything not yet generated falls straight
+   through to speechSynthesis. Slower speeds use playbackRate, which preserves
+   pitch, so one file serves every speed. */
+var Recorded = (function(){
+  var byText = null, cur = null, manifest = null;
+
+  function norm(t){
+    return String(t).replace(/\s*\/\s*/g, ", ").replace(/…/g, ", ")
+      .replace(/\[[^\]]*\]/g, "").replace(/\s+/g, " ").trim();
+  }
+  function index(){
+    if (byText || !manifest) return;
+    byText = {};
+    var w = {}; (manifest.words || []).forEach(function(i){ w[i] = 1; });
+    (typeof WORDS !== "undefined" ? WORDS : []).forEach(function(c){
+      if (w[c.i]) byText[norm(c.p)] = "audio/w/" + c.i + ".mp3";
+    });
+    var r = {}; (manifest.readings || []).forEach(function(k){ r[k] = 1; });
+    (typeof READINGS !== "undefined" ? READINGS : []).forEach(function(p){
+      (p.lines || []).forEach(function(l, i){
+        var k = p.id + "__" + i;
+        if (r[k]) byText[norm(l.pt)] = "audio/r/" + k + ".mp3";
+      });
+    });
+  }
+  function speedFor(){
+    var s = (S && S.set) ? S.set.rate : "steady";
+    return s === "slow" ? 0.7 : (s === "natural" ? 1 : 0.85);
+  }
+  /* Returns true once it has taken responsibility for speaking. If the clip
+     then fails — offline with that file uncached, or autoplay blocked — it
+     calls onFail so the device synth still gets a turn, rather than the word
+     silently doing nothing. */
+  function play(text, btn, onFail){
+    index();
+    var src = byText && byText[norm(text)];
+    if (!src) return false;
+    try {
+      if (cur) { try { cur.pause(); } catch(e){} cur = null; }
+      var a = new Audio(src), handed = false;
+      a.playbackRate = speedFor();
+      if ("preservesPitch" in a) a.preservesPitch = true;
+      a.webkitPreservesPitch = true;
+      if (btn) btn.classList.add("busy");
+      function done(){ if (btn) btn.classList.remove("busy"); }
+      function fail(){
+        if (handed) return;
+        handed = true; done();
+        if (onFail) onFail();
+      }
+      a.onended = done;
+      a.onerror = fail;
+      var p = a.play();
+      if (p && p.catch) p.catch(fail);
+      cur = a;
+      return true;
+    } catch(e){ return false; }
+  }
+  fetch("audio/manifest.json")
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(m){ if (m) { manifest = m; byText = null; } })
+    .catch(function(){});
+
+  return {
+    play: play,
+    ready: function(){ index(); return !!(byText && Object.keys(byText).length); },
+    count: function(){ index(); return byText ? Object.keys(byText).length : 0; },
+    voice: function(){ return manifest ? manifest.voice : null; }
+  };
+})();
+
+/* Speak buttons appear if we have recorded audio OR a device voice — the
+   recorded set alone is enough, and is the better of the two. */
+function canSpeak(){ return Recorded.ready() || Speech.supported(); }
+
 var Speech = (function(){
   var voice = null, status = "loading", supported = !!(window.speechSynthesis && window.SpeechSynthesisUtterance);
 
@@ -773,9 +850,15 @@ var Speech = (function(){
       .replace(/\s+/g, " ").trim();
   }
   function speak(text, btn){
-    if (!supported || !text) return;
+    if (!text) return;
     var t = sayable(text);
     if (!t) return;
+    // Real Portuguese if we have it; the device synth is the safety net.
+    if (Recorded.play(t, btn, function(){ synth(t, btn); })) return;
+    synth(t, btn);
+  }
+  function synth(t, btn){
+    if (!supported) return;
     try {
       var ss = window.speechSynthesis;
       if (ss.speaking || ss.pending) ss.cancel();
@@ -807,7 +890,7 @@ var Speech = (function(){
 })();
 
 function sayBtn(text, extraCls){
-  if (!Speech.supported()) return "";
+  if (!canSpeak()) return "";
   return '<button class="say ' + (extraCls||"") + '" data-say="' + esc(text) + '" aria-label="Hear it in Portuguese">' +
     '<svg width="19" height="19" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" ' +
     'stroke-linecap="round" stroke-linejoin="round">' +
@@ -823,7 +906,7 @@ function bindSay(){
 /* auto-play sits inside the tap that revealed the card, which keeps iOS happy */
 function autoSay(pt){
   if (S.set.audio === false) return;
-  if (!Speech.supported()) return;
+  if (!canSpeak()) return;
   Speech.speak(pt, null);
 }
 function refreshVoiceLine(){
@@ -2206,7 +2289,7 @@ function gbtn(g, lab, cls, id){
 }
 /* small "ouvir · listen" audio trigger (caller decides when to show it) */
 function sayLine(c){
-  if (!Speech.supported()) return "";
+  if (!canSpeak()) return "";
   return '<div style="text-align:center;margin-top:8px"><button class="txtbtn" data-say="' + esc(c.p) + '">' +
     '<svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
     '<path d="M4 7.5h2.5L10 4.5v11L6.5 12.5H4z" fill="currentColor" stroke="none"/><path d="M13 7.4a3.6 3.6 0 010 5.2"/></svg>ouvir · listen</button></div>';
@@ -2471,7 +2554,7 @@ function renderBrowse(){
   function entry(c){
     var p = S.prog[c.i];
     var d = !p ? "new" : (known(c.i) ? "known" : "learning");
-    return '<button class="dentry"' + (Speech.supported() ? ' data-say="' + esc(c.p) + '"' : '') + '>' +
+    return '<button class="dentry"' + (canSpeak() ? ' data-say="' + esc(c.p) + '"' : '') + '>' +
       '<span class="dot ' + d + '"></span><span class="dp">' + esc(c.p) + '</span><span class="de">' + esc(c.e) + '</span></button>';
   }
   var body;
@@ -2703,7 +2786,7 @@ function escapeRe(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
 /* Shown in Definições — bump with CACHE_VERSION in sw.js so a device can be
    checked against the deployed build. */
-var APP_BUILD = "v21";
+var APP_BUILD = "v22";
 
 /* ---- tap-a-word info: contractions, verb infinitives, word meanings ---- */
 var CONTRACTIONS = {
@@ -3118,7 +3201,7 @@ function renderSettings(){
       '<button class="' + (S.set.rate === "steady" || !S.set.rate ? "on" : "") + '" data-rate="steady">Normal</button>' +
       '<button class="' + (S.set.rate === "natural" ? "on" : "") + '" data-rate="natural">Natural</button>' +
     '</div>' +
-    (Speech.supported() ? '<button class="btn outline" style="margin-top:12px" data-say="Bom dia! Isto é português europeu.">Ouvir uma amostra · hear a sample</button>' : '') +
+    (canSpeak() ? '<button class="btn outline" style="margin-top:12px" data-say="Bom dia! Isto é português europeu.">Ouvir uma amostra · hear a sample</button>' : '') +
     '</div>' +
 
     '<div class="sectlabel" style="margin:30px 0 8px">Classes em rotação · word classes</div>' +

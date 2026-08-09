@@ -1,6 +1,6 @@
 /* Mil Palavras service worker — offline app shell.
    Bump CACHE_VERSION whenever the app files change to force an update. */
-const CACHE_VERSION = 'mil-palavras-v21';
+const CACHE_VERSION = 'mil-palavras-v22';
 const APP_SHELL = [
   './',
   './index.html',
@@ -14,8 +14,12 @@ const APP_SHELL = [
   './sync.js',
   './content.js',
   './readings.js',
+  './audio/manifest.json',
   './fonts.css'
 ];
+// Audio clips are NOT precached — ~20MB is far too much to force on install.
+// They are cached individually by the fetch handler as they're played, and a
+// clip that isn't cached yet falls back to the device voice when offline.
 // Font woff2 files are cached on demand by the fetch handler (cache-first).
 
 // Pre-cache the app shell on install.
