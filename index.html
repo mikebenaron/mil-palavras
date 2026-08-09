@@ -63,7 +63,7 @@ input{font-family:inherit;font-size:inherit;color:inherit;background:none;border
 ::-webkit-scrollbar{width:0;height:0}
 
 #app{
-  max-width:680px;margin:0 auto;
+  max-width:430px;margin:0 auto;
   padding:calc(var(--safe-t) + 22px) var(--pad) calc(var(--safe-b) + 56px);
 }
 
@@ -89,26 +89,26 @@ input{font-family:inherit;font-size:inherit;color:inherit;background:none;border
 .introp + .introe{font-size:12.5px;color:var(--slate-en2);line-height:1.5;margin-bottom:4px}
 
 /* ---------- home: masthead ---------- */
-.masthead{text-align:center;padding-bottom:18px;border-bottom:1px solid var(--rule-3)}
+.masthead{text-align:center;padding-bottom:16px;border-bottom:1px solid var(--rule-3)}
 .wordmark{font-family:var(--serif);font-style:italic;font-weight:400;font-size:34px;line-height:1;color:var(--ink)}
 .caderno{margin-top:9px;font-size:9px;letter-spacing:.28em;text-transform:uppercase;font-weight:700;color:var(--terracotta)}
 
 /* ---------- word of the day / card face ---------- */
-.wod{display:block;width:100%;text-align:center;padding:26px 4px;border-bottom:1px solid var(--rule-3)}
+.wod{display:block;width:100%;text-align:center;padding:26px 0 22px;border-bottom:1px solid var(--rule-3)}
 .wod .kicker{font-size:9px;letter-spacing:.22em;text-transform:uppercase;font-weight:700;color:var(--teal);margin-bottom:16px}
 .wod .word{font-family:var(--serif);font-size:46px;line-height:1.0;color:var(--ink);font-weight:400}
 .wod .ipa{font-family:var(--mono);font-size:11.5px;color:var(--slate);margin-top:14px;letter-spacing:.01em}
 .wod .answer{font-family:var(--serif);font-size:30px;line-height:1.1;color:var(--terracotta);font-weight:400}
 .wod .ex{font-family:var(--serif);font-style:italic;font-size:17px;color:var(--slate);margin-top:12px;line-height:1.45}
 .wod .exe{font-size:12px;color:var(--slate-en2);margin-top:3px}
-.wod .hint{font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--slate);margin-top:18px}
+.wod .hint{font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:oklch(65% .02 50);margin-top:18px}
 .fade-in{animation:fadein .16s ease both}
 @keyframes fadein{from{opacity:0}to{opacity:1}}
 
 /* ---------- KPI columns ---------- */
-.kpis{display:flex;padding:20px 0;border-bottom:1px solid var(--rule-3)}
+.kpis{display:flex;padding:18px 0;border-bottom:1px solid var(--rule-3)}
 .kpi{flex:1;text-align:center;padding:0 6px}
-.kpi + .kpi{border-left:1px solid var(--rule)}
+.kpi + .kpi{border-left:1px solid var(--rule-2)}
 .kpi .n{font-family:var(--serif);font-size:28px;line-height:1;color:var(--ink);font-weight:400}
 .kpi.terra .n{color:var(--terracotta)}
 .kpi.teal .n{color:var(--teal)}
@@ -117,8 +117,8 @@ input{font-family:inherit;font-size:inherit;color:inherit;background:none;border
 
 /* ---------- numbered contents list ---------- */
 .contents{margin-top:4px}
-.citem{display:flex;align-items:baseline;gap:16px;width:100%;padding:15px 0;border-bottom:1px solid var(--rule)}
-.citem .no{font-family:var(--mono);font-size:10px;color:var(--terracotta);flex:none;width:18px;padding-top:4px}
+.citem{display:flex;align-items:baseline;gap:14px;width:100%;padding:15px 0;border-bottom:1px solid var(--rule)}
+.citem .no{font-family:var(--mono);font-size:10px;color:var(--terracotta);flex:none}
 .citem .ctbody{flex:1;min-width:0}
 .citem .ct{display:block;font-family:var(--serif);font-size:20px;color:var(--ink);line-height:1.15}
 .citem .cs{display:block;font-size:11.5px;color:var(--slate);margin-top:2px}
@@ -1499,8 +1499,8 @@ function renderHome(){
 
     '<div class="contents">'+list+'</div>'+
 
-    '<div class="footer"><div class="fp">Funciona sem ligação à internet — no avião, no metro, em qualquer lado.</div>'+
-      '<div class="fe">Works with no signal. Your progress syncs privately to your own account when you\'re online.</div></div>'
+    '<div class="footer"><div class="fp">Funciona sem ligação à internet. Nada sai deste aparelho — o teu caderno é teu.</div>'+
+      '<div class="fe">Works with no signal. Nothing leaves this device — your notebook is yours.</div></div>'
   );
 
   var hero = document.getElementById("hero");
