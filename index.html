@@ -320,6 +320,20 @@ input{font-family:inherit;font-size:inherit;color:inherit;background:none;border
 .gtcell{flex:1;font-family:var(--serif);font-size:17.5px;color:var(--ink)}
 .gthead .gtlabel{color:var(--slate)}
 
+/* ---------- leitura (reading) ---------- */
+.passage{margin-top:8px}
+.rline{padding:12px 0;border-bottom:1px solid var(--rule);cursor:pointer}
+.rline .rpt{font-family:var(--serif);font-size:20px;line-height:1.5;color:var(--ink)}
+.rline .ren{font-size:13px;color:var(--slate-en);line-height:1.5;margin-top:6px;max-height:0;overflow:hidden;opacity:0;transition:opacity .15s}
+.rline.show .ren{max-height:220px;opacity:1}
+@media(hover:hover){.rline:hover .rpt{color:var(--terracotta)}}
+.passage.cloze{font-family:var(--serif);font-size:20px;line-height:2.1;color:var(--ink)}
+.gapinput{font-family:var(--serif);font-size:19px;color:var(--terracotta);text-align:center;
+  border:0;border-bottom:2px solid var(--terracotta);background:transparent;padding:0 4px;margin:0 2px;border-radius:0}
+.gapinput:focus{outline:none;background:oklch(55% .16 40 / .08)}
+.gapinput.right{color:var(--teal);border-bottom-color:var(--teal)}
+.gapinput.wrong{color:var(--vinho);border-bottom-color:var(--vinho)}
+
 /* ---------- toast ---------- */
 .toast{position:fixed;left:50%;bottom:calc(var(--safe-b) + 26px);transform:translateX(-50%);
   background:var(--ink);color:var(--paper);font-size:12.5px;padding:10px 16px;z-index:50;letter-spacing:.02em}
@@ -1639,12 +1653,13 @@ function renderHomePhone(){
     {n:"06",p:"Conjugações",e:"conjugations",nav:"conj",tail:String(conj)},
     {n:"07",p:"Dicionário",e:"dictionary",nav:"browse",tail:String(CARDS.length)},
     {n:"08",p:"Gramática",e:"grammar",nav:"grammar",tail:"6"},
-    {n:"09",p:"Método",e:"method",nav:"method",tail:""},
-    {n:"10",p:"Definições",e:"settings",nav:"settings",tail:""}
+    {n:"09",p:"Leitura",e:"reading",nav:"leitura",tail:String(READINGS.length)},
+    {n:"10",p:"Método",e:"method",nav:"method",tail:""},
+    {n:"11",p:"Definições",e:"settings",nav:"settings",tail:""}
   ];
-  var tiles = items.map(function(it){
+  var tiles = items.map(function(it, ti){
     return '<button class="tile-nav" data-nav="'+it.nav+'">'+
-      '<div class="tno">'+it.n+(it.tail?' · '+esc(it.tail):'')+'</div>'+
+      '<div class="tno">'+pad2(ti+1)+(it.tail?' · '+esc(it.tail):'')+'</div>'+
       '<div class="tct">'+esc(it.p)+'</div>'+
       '<div class="tcs">'+esc(it.e)+'</div>'+
     '</button>';
@@ -1710,8 +1725,8 @@ function railItems(active){
     {k:"flash",p:"Cartões",e:"Flashcards"},{k:"choice",p:"Escolha",e:"Multiple choice"},
     {k:"type",p:"Escrever",e:"Type it"},{k:"gender",p:"O ou A?",e:"Noun gender"},
     {k:"conj",p:"Conjugações",e:"Conjugations"},{k:"browse",p:"Dicionário",e:"Dictionary"},
-    {k:"grammar",p:"Gramática",e:"Grammar"},{k:"method",p:"Método",e:"Method"},
-    {k:"settings",p:"Definições",e:"Settings"}
+    {k:"grammar",p:"Gramática",e:"Grammar"},{k:"leitura",p:"Leitura",e:"Reading"},
+    {k:"method",p:"Método",e:"Method"},{k:"settings",p:"Definições",e:"Settings"}
   ];
   return nav.map(function(n){
     return '<button class="'+(n.k===active?"on":"")+'" data-nav="'+n.k+'">'+esc(n.p)+
@@ -1851,6 +1866,7 @@ function go(n){
   if (n === "settings") return renderSettings();
   if (n === "browse") return renderBrowse();
   if (n === "grammar") return renderGrammar();
+  if (n === "leitura") return renderReadingPicker();
   if (n === "method") return renderMethod();
   if (n === "flash") return renderDeckPicker("flash");
   if (n === "choice") return renderDeckPicker("choice");
@@ -2493,6 +2509,131 @@ function renderMethod(){
     '<div style="margin-top:6px">' + body + '</div>' +
     '<div class="footnote" style="margin-top:22px"><div class="np">Na pronúncia, as MAIÚSCULAS marcam a sílaba tónica — a que se diz com mais força — e "(nasal)" marca um som nasal.</div>' +
     '<div class="ne">In the pronunciation guides, CAPITALS mark the stressed syllable (the one you say hardest); "(nasal)" marks a nasal sound.</div></div>', renderMethod);
+  bindNav();
+}
+
+/* ============================ leitura (reading) ============================ */
+/* Short graded passages built from common words: comprehensible input, with
+   parallel-text reveal and cloze (fill-the-gaps) practice. */
+var READINGS = [
+  { id:"lisboa", title:"Uma manhã em Lisboa", titleE:"A morning in Lisbon", level:"A1",
+    lines:[
+      {pt:"Bom dia! Hoje é sábado e estou em Lisboa.", en:"Good morning! Today is Saturday and I'm in Lisbon."},
+      {pt:"De manhã, tomo um café e leio o jornal.", en:"In the morning, I have a coffee and read the newspaper."},
+      {pt:"A cidade é linda e o tempo está bom.", en:"The city is beautiful and the weather is nice."},
+      {pt:"À tarde, vou passear com a minha família.", en:"In the afternoon, I'm going for a walk with my family."},
+      {pt:"À noite, comemos peixe num restaurante perto de casa.", en:"At night, we eat fish at a restaurant near home."}
+    ],
+    gaps:["sábado","café","cidade","família","casa"] },
+  { id:"familia", title:"A minha família", titleE:"My family", level:"A1",
+    lines:[
+      {pt:"A minha família é pequena.", en:"My family is small."},
+      {pt:"O meu pai chama-se António e a minha mãe chama-se Maria.", en:"My father is called António and my mother is called Maria."},
+      {pt:"Tenho um irmão mais velho e uma irmã mais nova.", en:"I have an older brother and a younger sister."},
+      {pt:"Ao domingo, almoçamos todos juntos em casa dos meus avós.", en:"On Sundays, we all have lunch together at my grandparents' house."},
+      {pt:"Gosto muito de estar com eles.", en:"I really like being with them."}
+    ],
+    gaps:["família","pai","mãe","irmão","avós"] },
+  { id:"cafe", title:"No café", titleE:"At the café", level:"A2",
+    lines:[
+      {pt:"— Bom dia. Um café e um pastel de nata, por favor.", en:"— Good morning. A coffee and a custard tart, please."},
+      {pt:"— São dois euros e meio.", en:"— That's two euros fifty."},
+      {pt:"— Aqui tem. Obrigado.", en:"— Here you go. Thank you."},
+      {pt:"O café em Portugal é forte e barato.", en:"Coffee in Portugal is strong and cheap."},
+      {pt:"As pessoas bebem-no de pé, ao balcão, em poucos minutos.", en:"People drink it standing, at the counter, in a few minutes."}
+    ],
+    gaps:["café","euros","obrigado","Portugal","minutos"] }
+];
+var READMODE = "read";      // "read" | "fill"
+var readGap = null;         // last-focused cloze input, for the accent bar
+
+function renderReadingPicker(){
+  var rows = READINGS.map(function(r){
+    return bookRow("data-reading", r.id, r.title, r.titleE, r.level + " · " + r.lines.length + " frases", "");
+  }).join("");
+  renderPage("leitura",
+    screenTitle("Leitura", "reading") +
+    screenIntro("Textos curtos feitos com palavras que já conheces. Lê, revela a tradução, depois preenche as lacunas.",
+                "Short texts built from words you already know. Read, reveal the translation, then fill the gaps.") +
+    '<div class="booklist">' + rows + '</div>', renderReadingPicker);
+  on("[data-reading]","click",function(e){ READMODE = "read"; renderReading(e.currentTarget.getAttribute("data-reading")); });
+  bindNav();
+}
+
+function escapeRe(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+
+function renderReading(id){
+  var r = null; for (var i=0;i<READINGS.length;i++) if (READINGS[i].id === id) r = READINGS[i];
+  if (!r) return renderReadingPicker();
+
+  var seg = '<div class="seg" style="margin:16px 0 4px">' +
+    '<button class="' + (READMODE==="read"?"on":"") + '" data-rm="read">Ler</button>' +
+    '<button class="' + (READMODE==="fill"?"on":"") + '" data-rm="fill">Preencher</button>' +
+    '</div>';
+
+  var body;
+  if (READMODE === "read") {
+    body = '<div class="passage">' + r.lines.map(function(l, i){
+      return '<div class="rline" data-i="' + i + '"><div class="rpt">' + esc(l.pt) + '</div>' +
+        '<div class="ren">' + esc(l.en) + '</div></div>';
+    }).join("") + '</div>' +
+    '<div class="pcap" style="margin-top:14px">Toca numa frase para ver a tradução. · Tap a sentence to reveal its translation.</div>' +
+    '<button class="btn outline block" style="margin-top:16px" data-revealall="1">Revelar tudo · reveal all</button>';
+  } else {
+    var used = {};
+    var cloze = r.lines.map(function(l){
+      var t = esc(l.pt);
+      r.gaps.forEach(function(w){
+        if (used[w]) return;
+        var re = new RegExp("(^|[^0-9A-Za-zÀ-ÿ])(" + escapeRe(esc(w)) + ")([^0-9A-Za-zÀ-ÿ]|$)");
+        if (re.test(t)) {
+          used[w] = true;
+          t = t.replace(re, function(m,a,b,c){
+            return a + '<input class="gapinput" data-ans="' + b + '" size="' + Math.max(4, b.length + 1) + '" ' +
+              'autocapitalize="off" autocorrect="off" spellcheck="false">' + c;
+          });
+        }
+      });
+      return '<span class="clozeline">' + t + '</span> ';
+    }).join("");
+    var accents = ACCENTS.map(function(a){ return '<button class="akey" data-racc="' + a + '">' + a + '</button>'; }).join("");
+    body = '<div class="passage cloze">' + cloze + '</div>' +
+      '<div class="accents" style="margin-top:16px">' + accents + '</div>' +
+      '<button class="btn fill block" style="margin-top:16px" data-check="1">Verificar · check</button>' +
+      '<div id="clozeres"></div>';
+  }
+
+  renderPage("leitura", screenTitle(r.title, r.titleE) + seg + body,
+    function(){ renderReading(id); }, "leitura", "Leitura · reading");
+
+  on("[data-rm]","click",function(e){ READMODE = e.currentTarget.getAttribute("data-rm"); renderReading(id); });
+  on("[data-i]","click",function(e){ e.currentTarget.classList.toggle("show"); });
+  on("[data-revealall]","click",function(){
+    var n = app.querySelectorAll(".rline"); for (var j=0;j<n.length;j++) n[j].classList.add("show");
+  });
+  // cloze wiring
+  var gaps = app.querySelectorAll(".gapinput");
+  for (var g=0; g<gaps.length; g++) gaps[g].addEventListener("focus", function(e){ readGap = e.target; });
+  on("[data-racc]","click",function(e){
+    if (!readGap) return;
+    var a = e.currentTarget.getAttribute("data-racc");
+    var s = readGap.selectionStart || readGap.value.length;
+    readGap.value = readGap.value.slice(0,s) + a + readGap.value.slice(readGap.selectionEnd || s);
+    readGap.focus(); readGap.setSelectionRange(s+1, s+1);
+  });
+  on("[data-check]","click",function(){
+    var ok = 0, tot = gaps.length;
+    for (var j=0;j<gaps.length;j++){
+      var inp = gaps[j], right = norm(inp.getAttribute("data-ans")) === norm(inp.value);
+      inp.classList.remove("right","wrong"); inp.classList.add(right ? "right" : "wrong");
+      if (right) ok++; else inp.value = inp.getAttribute("data-ans");
+      inp.disabled = true;
+    }
+    document.getElementById("clozeres").innerHTML =
+      '<div class="explain" style="margin-top:16px"><div class="eyebrow ' + (ok===tot?"teal":"") + '" style="margin-bottom:6px">' +
+      (ok===tot ? "Tudo certo · all correct" : ok + " / " + tot + " certas · correct") + '</div>' +
+      '<div class="ne">As palavras em falta aparecem a cheio. · The missing words are shown filled in.</div></div>';
+  });
   bindNav();
 }
 
