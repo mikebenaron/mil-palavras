@@ -342,6 +342,21 @@ input{font-family:inherit;font-size:inherit;color:inherit;background:none;border
 .srcline .lvl{display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--paper);
   background:var(--teal);padding:2px 7px;margin-right:8px;vertical-align:middle}
 .brow .lvlbadge{font-family:var(--mono);font-size:9.5px;color:var(--paper);background:var(--teal);padding:2px 6px;margin-left:8px;letter-spacing:.06em}
+.srcline .aimark{color:var(--ochre)}
+/* translate mode */
+.rline.tmode .ten{font-size:15px;color:var(--ink);line-height:1.5}
+.rline.tmode .tpt{font-family:var(--serif);font-size:20px;color:var(--terracotta);line-height:1.5;margin-top:6px;max-height:0;overflow:hidden;opacity:0;transition:opacity .15s}
+.rline.tmode.show .tpt{max-height:220px;opacity:1}
+.rline.tmode .ren{display:none}
+/* comprehension quiz */
+.qblock{padding:16px 0;border-bottom:1px solid var(--rule)}
+.qtext{font-family:var(--serif);font-size:18px;color:var(--ink);line-height:1.35}
+.qtexte{font-size:12px;color:var(--slate-en);margin-top:3px}
+.qopts{display:flex;flex-direction:column;gap:7px;margin-top:12px}
+.qopt{width:100%;padding:12px 14px;font-family:var(--serif);font-size:15.5px;color:var(--ink);background:var(--card);box-shadow:inset 0 0 0 1px var(--rule-2)}
+.qopt.sel{box-shadow:inset 0 0 0 2px var(--ink)}
+.qopt.right{box-shadow:inset 0 0 0 2px var(--teal);color:var(--teal)}
+.qopt.wrong{box-shadow:inset 0 0 0 2px var(--vinho);color:var(--vinho)}
 
 /* ---------- toast ---------- */
 .toast{position:fixed;left:50%;bottom:calc(var(--safe-b) + 26px);transform:translateX(-50%);
@@ -2525,7 +2540,7 @@ function renderMethod(){
 /* Short graded passages built from common words: comprehensible input, with
    parallel-text reveal and cloze (fill-the-gaps) practice. */
 var READINGS = [
-  { id:"reggae", title:"Um novo festival em Oeiras", titleE:"A new festival in Oeiras", level:"A2",
+  { id:"reggae", title:"Um novo festival em Oeiras", titleE:"A new festival in Oeiras", level:"A2", ai:true,
     src:"Resumo de notícia · RTP Notícias (2026)", srcUrl:"https://www.rtp.pt/noticias/cultura/ha-um-novo-festival-em-oeiras-o-reggae-sun-fest_v1758521", pt_note:true,
     lines:[
       {pt:"Há um novo festival de música em Oeiras, perto de Lisboa.", en:"There's a new music festival in Oeiras, near Lisbon."},
@@ -2533,8 +2548,13 @@ var READINGS = [
       {pt:"É mais um evento cultural para o verão na região de Lisboa.", en:"It's another cultural event for summer in the Lisbon region."},
       {pt:"Os moradores e os visitantes podem ouvir concertos ao vivo.", en:"Residents and visitors can listen to live concerts."}
     ],
-    gaps:["festival","música","verão","concertos"] },
-  { id:"raposa", title:"A raposa e as uvas", titleE:"The fox and the grapes", level:"A2",
+    gaps:["festival","música","verão","concertos"],
+    questions:[
+      {q:"Onde é o novo festival?", qE:"Where is the new festival?", options:["Em Oeiras","No Porto","Em Coimbra"], answer:0},
+      {q:"Que tipo de música toca?", qE:"What kind of music does it play?", options:["Reggae","Fado","Rock"], answer:0},
+      {q:"Em que estação do ano acontece?", qE:"In which season does it take place?", options:["No verão","No inverno","No outono"], answer:0}
+    ] },
+  { id:"raposa", title:"A raposa e as uvas", titleE:"The fox and the grapes", level:"A2", ai:true,
     src:"Adaptado de uma fábula de Esopo · domínio público", pt_note:true,
     lines:[
       {pt:"Uma raposa com fome viu uns cachos de uvas numa videira alta.", en:"A hungry fox saw some bunches of grapes on a high vine."},
@@ -2542,8 +2562,41 @@ var READINGS = [
       {pt:"Cansada, foi-se embora e disse: «Não estão maduras.»", en:"Tired, it went away and said: 'They're not ripe.'"},
       {pt:"É fácil desprezar aquilo que não podemos ter.", en:"It's easy to scorn what we cannot have."}
     ],
-    gaps:["raposa","uvas","maduras","ter"] },
-  { id:"lisboa", title:"Uma manhã em Lisboa", titleE:"A morning in Lisbon", level:"A1", src:"Texto original · Mil Palavras", pt_note:true,
+    gaps:["raposa","uvas","maduras","ter"],
+    questions:[
+      {q:"O que queria a raposa?", qE:"What did the fox want?", options:["Comer as uvas","Dormir","Correr"], answer:0},
+      {q:"Porque não comeu as uvas?", qE:"Why didn't it eat the grapes?", options:["Não conseguiu chegar","Não tinha fome","Não gostava"], answer:0},
+      {q:"O que disse no fim?", qE:"What did it say at the end?", options:["Que não estavam maduras","Que eram doces","Que estava cheia"], answer:0}
+    ] },
+  { id:"proverbios", title:"Provérbios portugueses", titleE:"Portuguese proverbs", level:"A2",
+    src:"Provérbios tradicionais portugueses · domínio público", pt_note:true,
+    lines:[
+      {pt:"Quem não arrisca, não petisca.", en:"Nothing ventured, nothing gained. (lit. who doesn't risk, doesn't nibble)"},
+      {pt:"Devagar se vai ao longe.", en:"Slow and steady gets you far."},
+      {pt:"Mais vale um pássaro na mão do que dois a voar.", en:"A bird in the hand is worth two in the bush."},
+      {pt:"Quem tem boca vai a Roma.", en:"Ask and you'll get there. (lit. who has a mouth reaches Rome)"},
+      {pt:"Águas passadas não movem moinhos.", en:"It's water under the bridge. (lit. past waters don't turn mills)"}
+    ],
+    gaps:["arrisca","longe","mão","boca","moinhos"],
+    questions:[
+      {q:"«Devagar se vai ao…»", qE:"Complete: slow and steady gets you…", options:["ao longe","a casa","ao café"], answer:0},
+      {q:"Qual provérbio fala de um pássaro?", qE:"Which proverb mentions a bird?", options:["Mais vale um pássaro na mão…","Quem não arrisca…","Quem tem boca…"], answer:0}
+    ] },
+  { id:"fado", title:"O fado", titleE:"Fado", level:"B1", ai:true, src:"Texto original sobre um tema real · Mil Palavras", pt_note:true,
+    lines:[
+      {pt:"O fado é a canção tradicional de Portugal, sobretudo de Lisboa e de Coimbra.", en:"Fado is the traditional song of Portugal, above all from Lisbon and Coimbra."},
+      {pt:"Fala muitas vezes de saudade, de amor e do destino.", en:"It often speaks of longing (saudade), love and fate."},
+      {pt:"Uma pessoa canta, acompanhada por uma guitarra portuguesa e uma viola.", en:"One person sings, accompanied by a Portuguese guitar and a classical guitar."},
+      {pt:"Amália Rodrigues foi a voz mais famosa do fado no século XX.", en:"Amália Rodrigues was the most famous voice of fado in the 20th century."},
+      {pt:"Em 2011, a UNESCO reconheceu o fado como Património da Humanidade.", en:"In 2011, UNESCO recognised fado as Intangible Cultural Heritage."}
+    ],
+    gaps:["fado","saudade","guitarra","voz","Património"],
+    questions:[
+      {q:"De que cidades é sobretudo o fado?", qE:"Fado is above all from which cities?", options:["Lisboa e Coimbra","Porto e Braga","Faro e Évora"], answer:0},
+      {q:"Quem foi Amália Rodrigues?", qE:"Who was Amália Rodrigues?", options:["A voz mais famosa do fado","Uma pintora","Uma rainha"], answer:0},
+      {q:"O que fez a UNESCO em 2011?", qE:"What did UNESCO do in 2011?", options:["Reconheceu o fado como Património","Proibiu o fado","Criou o fado"], answer:0}
+    ] },
+  { id:"lisboa", title:"Uma manhã em Lisboa", titleE:"A morning in Lisbon", level:"A1", ai:true, src:"Texto original · Mil Palavras", pt_note:true,
     lines:[
       {pt:"Bom dia! Hoje é sábado e estou em Lisboa.", en:"Good morning! Today is Saturday and I'm in Lisbon."},
       {pt:"De manhã, tomo um café e leio o jornal.", en:"In the morning, I have a coffee and read the newspaper."},
@@ -2551,8 +2604,13 @@ var READINGS = [
       {pt:"À tarde, vou passear com a minha família.", en:"In the afternoon, I'm going for a walk with my family."},
       {pt:"À noite, comemos peixe num restaurante perto de casa.", en:"At night, we eat fish at a restaurant near home."}
     ],
-    gaps:["sábado","café","cidade","família","casa"] },
-  { id:"familia", title:"A minha família", titleE:"My family", level:"A1", src:"Texto original · Mil Palavras", pt_note:true,
+    gaps:["sábado","café","cidade","família","casa"],
+    questions:[
+      {q:"Que dia da semana é?", qE:"What day of the week is it?", options:["Sábado","Domingo","Segunda-feira"], answer:0},
+      {q:"O que faz de manhã?", qE:"What does he do in the morning?", options:["Toma um café e lê o jornal","Vai trabalhar","Fica a dormir"], answer:0},
+      {q:"O que comem à noite?", qE:"What do they eat at night?", options:["Peixe","Carne","Sopa"], answer:0}
+    ] },
+  { id:"familia", title:"A minha família", titleE:"My family", level:"A1", ai:true, src:"Texto original · Mil Palavras", pt_note:true,
     lines:[
       {pt:"A minha família é pequena.", en:"My family is small."},
       {pt:"O meu pai chama-se António e a minha mãe chama-se Maria.", en:"My father is called António and my mother is called Maria."},
@@ -2560,8 +2618,13 @@ var READINGS = [
       {pt:"Ao domingo, almoçamos todos juntos em casa dos meus avós.", en:"On Sundays, we all have lunch together at my grandparents' house."},
       {pt:"Gosto muito de estar com eles.", en:"I really like being with them."}
     ],
-    gaps:["família","pai","mãe","irmão","avós"] },
-  { id:"cafe", title:"No café", titleE:"At the café", level:"A2", src:"Texto original · Mil Palavras", pt_note:true,
+    gaps:["família","pai","mãe","irmão","avós"],
+    questions:[
+      {q:"Como é a família?", qE:"What's the family like?", options:["Pequena","Grande","Enorme"], answer:0},
+      {q:"Quantos irmãos tem?", qE:"How many siblings?", options:["Um irmão e uma irmã","Dois irmãos","Nenhum"], answer:0},
+      {q:"Onde almoçam ao domingo?", qE:"Where do they have Sunday lunch?", options:["Em casa dos avós","Num restaurante","Em Lisboa"], answer:0}
+    ] },
+  { id:"cafe", title:"No café", titleE:"At the café", level:"A2", ai:true, src:"Texto original · Mil Palavras", pt_note:true,
     lines:[
       {pt:"— Bom dia. Um café e um pastel de nata, por favor.", en:"— Good morning. A coffee and a custard tart, please."},
       {pt:"— São dois euros e meio.", en:"— That's two euros fifty."},
@@ -2569,7 +2632,12 @@ var READINGS = [
       {pt:"O café em Portugal é forte e barato.", en:"Coffee in Portugal is strong and cheap."},
       {pt:"As pessoas bebem-no de pé, ao balcão, em poucos minutos.", en:"People drink it standing, at the counter, in a few minutes."}
     ],
-    gaps:["café","euros","obrigado","Portugal","minutos"] }
+    gaps:["café","euros","obrigado","Portugal","minutos"],
+    questions:[
+      {q:"O que pede o cliente?", qE:"What does the customer order?", options:["Um café e um pastel de nata","Um chá","Uma cerveja"], answer:0},
+      {q:"Quanto custa?", qE:"How much does it cost?", options:["Dois euros e meio","Cinco euros","Um euro"], answer:0},
+      {q:"Como bebem o café os portugueses?", qE:"How do the Portuguese drink coffee?", options:["De pé, ao balcão","Sentados, devagar","Sempre em casa"], answer:0}
+    ] }
 ];
 var READMODE = "read";      // "read" | "fill"
 var readGap = null;         // last-focused cloze input, for the accent bar
@@ -2593,10 +2661,16 @@ function renderReading(id){
   var r = null; for (var i=0;i<READINGS.length;i++) if (READINGS[i].id === id) r = READINGS[i];
   if (!r) return renderReadingPicker();
 
-  var seg = '<div class="seg" style="margin:16px 0 4px">' +
-    '<button class="' + (READMODE==="read"?"on":"") + '" data-rm="read">Ler</button>' +
-    '<button class="' + (READMODE==="fill"?"on":"") + '" data-rm="fill">Preencher</button>' +
-    '</div>';
+  var modes = [{k:"read",l:"Ler"}];
+  if (r.gaps && r.gaps.length) modes.push({k:"fill",l:"Preencher"});
+  modes.push({k:"translate",l:"Traduzir"});
+  if (r.questions && r.questions.length) modes.push({k:"quiz",l:"Perguntas"});
+  if (!modes.some(function(m){ return m.k === READMODE; })) READMODE = "read";
+  var quizSel = {};
+
+  var seg = '<div class="seg" style="margin:16px 0 4px">' + modes.map(function(m){
+    return '<button class="' + (READMODE===m.k?"on":"") + '" data-rm="' + m.k + '">' + m.l + '</button>';
+  }).join("") + '</div>';
 
   var body;
   if (READMODE === "read") {
@@ -2606,6 +2680,24 @@ function renderReading(id){
     }).join("") + '</div>' +
     '<div class="pcap" style="margin-top:14px">Toca numa frase para ver a tradução. · Tap a sentence to reveal its translation.</div>' +
     '<button class="btn outline block" style="margin-top:16px" data-revealall="1">Revelar tudo · reveal all</button>';
+  } else if (READMODE === "translate") {
+    body = '<div class="passage">' + r.lines.map(function(l, i){
+      return '<div class="rline tmode" data-i="' + i + '"><div class="ten">' + esc(l.en) + '</div>' +
+        '<div class="tpt">' + esc(l.pt) + '</div></div>';
+    }).join("") + '</div>' +
+    '<div class="pcap" style="margin-top:14px">Diz ou escreve cada frase em português; toca para ver a resposta. · Say or write each line in Portuguese, then tap to reveal.</div>' +
+    '<button class="btn outline block" style="margin-top:16px" data-revealall="1">Revelar tudo · reveal all</button>';
+  } else if (READMODE === "quiz") {
+    body = '<div class="quiz">' + r.questions.map(function(qq, qi){
+      var opts = qq.options.map(function(opt, oi){
+        return '<button class="qopt" data-q="' + qi + '" data-o="' + oi + '">' + esc(opt) + '</button>';
+      }).join("");
+      return '<div class="qblock"><div class="qtext">' + esc(qq.q) + '</div>' +
+        (qq.qE ? '<div class="qtexte">' + esc(qq.qE) + '</div>' : '') +
+        '<div class="qopts">' + opts + '</div></div>';
+    }).join("") + '</div>' +
+    '<button class="btn fill block" style="margin-top:16px" data-quizcheck="1">Verificar · check</button>' +
+    '<div id="quizres"></div>';
   } else {
     var used = {};
     var cloze = r.lines.map(function(l){
@@ -2641,7 +2733,8 @@ function renderReading(id){
   var srcLbl = r.src || "Texto original · Mil Palavras";
   var srcLine = '<div class="srcline"><span class="lvl">' + esc(r.level) + '</span>' +
     'Fonte · source: ' + (r.srcUrl ? '<a href="' + esc(r.srcUrl) + '" target="_blank" rel="noopener noreferrer">' + esc(srcLbl) + '</a>' : esc(srcLbl)) +
-    (r.pt_note ? ' · <span class="ptmark">português europeu</span>' : '') + '</div>';
+    (r.pt_note ? ' · português europeu' : '') +
+    (r.ai ? ' · <span class="aimark">✳ texto gerado por IA · AI-generated</span>' : '') + '</div>';
 
   renderPage("leitura", screenTitle(r.title, r.titleE) + seg + body + srcLine,
     function(){ renderReading(id); }, "leitura", "Leitura · reading");
@@ -2691,6 +2784,32 @@ function renderReading(id){
       '<div class="explain" style="margin-top:16px"><div class="eyebrow ' + (ok===tot?"teal":"") + '" style="margin-bottom:6px">' +
       (ok===tot ? "Tudo certo · all correct" : ok + " / " + tot + " certas · correct") + '</div>' +
       '<div class="ne">As palavras em falta aparecem a cheio. · The missing words are shown filled in.</div></div>';
+  });
+  // quiz wiring
+  on("[data-o]","click",function(e){
+    var qi = e.currentTarget.getAttribute("data-q");
+    quizSel[qi] = +e.currentTarget.getAttribute("data-o");
+    var sibs = app.querySelectorAll('[data-q="' + qi + '"]');
+    for (var s=0;s<sibs.length;s++) sibs[s].classList.remove("sel");
+    e.currentTarget.classList.add("sel");
+  });
+  on("[data-quizcheck]","click",function(){
+    if (!r.questions) return;
+    var ok = 0;
+    r.questions.forEach(function(qq, qi){
+      var opts = app.querySelectorAll('[data-q="' + qi + '"]');
+      for (var o=0;o<opts.length;o++){
+        opts[o].classList.remove("sel");
+        if (o === qq.answer) opts[o].classList.add("right");
+        else if (quizSel[qi] === o) opts[o].classList.add("wrong");
+        opts[o].setAttribute("disabled","");
+      }
+      if (quizSel[qi] === qq.answer) ok++;
+    });
+    document.getElementById("quizres").innerHTML =
+      '<div class="explain" style="margin-top:16px"><div class="eyebrow ' + (ok===r.questions.length?"teal":"") + '" style="margin-bottom:6px">' +
+      ok + " / " + r.questions.length + " certas · correct</div>" +
+      '<div class="ne">A resposta certa fica a verde. · The correct answer is shown in green.</div></div>';
   });
   bindNav();
 }
