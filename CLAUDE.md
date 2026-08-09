@@ -42,6 +42,7 @@ adverb). They share one content entry, so its note must cover both senses.
 | `sw.js` | Service worker: versioned app-shell cache + **durable** audio cache |
 | `audio/` | ~185MB of pre-generated speech, committed deliberately |
 | `tools/audio/` | Audio build scripts |
+| `tools/conj-check.mjs` | Conjugation spot-checks against hand-written paradigms |
 | `tools/voice-test/` | Blind voice A/B harness (how Duarte was chosen) |
 | `supabase/functions/` | Edge Functions (account deletion) |
 
@@ -74,8 +75,19 @@ adding audio never requires touching call sites:
 |---|---|---|
 | `audio/w/<cardId>.mp3` | 990 vocabulary cards | `words` (ids) |
 | `audio/r/<readingId>__<line>.mp3` | 517 passage lines | `readings` |
-| `audio/d/<i>.mp3` | 2855 conjugation + grammar drills | `drills` (texts, positional) |
-| `audio/p/<i>.mp3` | 1018 passage words, lower-cased | `passage` (texts, positional) |
+| `audio/d/<i>.mp3` | conjugation + grammar drills | `drills` (texts, positional) |
+| `audio/p/<i>.mp3` | passage words, lower-cased | `passage` (texts, positional) |
+
+**`drills` and `passage` are positional, and the shipped manifest owns those
+positions.** Both lists are sorted, so growing them would renumber everything
+after the first insertion — and since the builder skips clips it already has,
+every existing file would keep its audio while the manifest re-labelled it as a
+different phrase. Nothing errors; the app just says the wrong word. `pinned()`
+in `tools/audio/build.mjs` therefore reads the previous manifest first: a text
+keeps the slot it owns, new texts are appended, and a slot whose text is no
+longer generated is left alone rather than reused. Adding the nine extra tenses
+needed 8,195 new clips and re-recorded none of the 2,855 already correct.
+**Never regenerate the drill manifest from a bare sort.**
 
 ```bash
 node tools/audio/build.mjs               # everything missing (resumable)
@@ -140,6 +152,69 @@ the grade button can never drift from what pressing it does.
 
 First-review intervals: Outra vez → today, Difícil → 1d, Bom → 4d, Fácil → 14d.
 (Under SM-2, Fácil gave 3 days, which is what prompted the change.)
+
+## Conjugation — all twelve tenses
+
+`conjugateAll()` builds the full paradigm. Portuguese derives almost everything
+from three principal parts, and the code is written that way rather than as
+twelve tables:
+
+- **the infinitive** → futuro, condicional, infinitivo pessoal
+- **the `eu` form** → conjuntivo presente, and the imperative from that
+- **the `eles` past** → conjuntivo imperfeito, conjuntivo futuro, mais-que-perfeito
+
+So the exception tables carry only what genuinely cannot be derived: three
+irregular future stems (`dir- / far- / trar-`), four irregular imperfects
+(`era / tinha / vinha / punha`), seven present subjunctives the `eu` form does
+not predict (`seja esteja vá dê saiba queira haja`), and a participle list.
+Adding these tenses needed no second irregular-verb dataset.
+
+```bash
+node tools/conj-check.mjs      # 127 forms against hand-written paradigms
+```
+
+Run that after any change here. It runs the app's own generator against a DOM
+stub rather than reimplementing rules, the same way `tools/audio/drills.mjs`
+does. These are the things it exists to catch:
+
+- **`deem`, not `dêem`.** AO90 dropped that circumflex, same as `creem / leem /
+  veem`; the present table already spells `veem` that way.
+- **The `nós` accent** on `-ssemos` / `-ramos` depends on the stem vowel, and a
+  regular `-er` verb keeps its closed theme vowel (`comêssemos`) while a strong
+  preterite stem takes an acute (`fizéssemos`).
+- **Futuro do conjuntivo is not derived from the past when the past stem is the
+  infinitive in disguise.** `saíram` would give `saír`; the tense is `sair`.
+  The test is a de-accented comparison against the infinitive, *not* `pretReg` —
+  `sair` is flagged irregular yet has a regularly shaped past.
+- **`-air` / `-uir` verbs** open the stem vowel before `-es` and `-em` in the
+  personal infinitive: `sair, saíres, sair, sairmos, saírem`.
+- **Reflexive pronoun placement is tense-dependent**: enclitic in the plain
+  indicative (`deitamo-nos`, with `nós` dropping its `-s`), proclitic in the
+  subjunctives (`que eu me deite`), and **mesoclitic** in the futuro and
+  condicional (`deitar-me-ei`) — which Brazil never writes, so it stays.
+
+Card ids are `c|<word>|<tenseId>|<person>`. **`p` (presente) and `t` (pretérito
+perfeito) must keep those ids** — they are the two tenses that existed before
+the expansion, and 2,693 cards are already scheduled under them.
+
+## When is a verb "known"?
+
+Deliberately two separate verdicts, and they never share a total:
+
+- The **vocabulary card** answers *what does falar mean*. This is the only thing
+  the 990 counter on the home screen counts, and it always will be.
+- **`verbMastery(v)`** answers *can you conjugate it*, as a ladder. A verb is
+  conjugated to rung N when the lemma is known **and every cell of every tense
+  up to N is known** — same 21-day bar as everywhere else. Not a percentage, and
+  no skipping: one missing cell in the present drops the verb back to rung 0
+  even if all of B2 is complete.
+
+Rungs are A1 presente · A2 passado/imperfeito/imperativo/particípio · B1
+futuro/condicional/conjuntivo presente · B2 the rest. `S.set.tlvl` gates which
+tenses enter the **daily queue only** (`newPool()`); every tense is always
+drillable by hand from Conjugações. Default is 2. All twelve at once is 14,819
+conjugation cards, which buries the vocabulary the ladder exists to support —
+that is what the setting is for, not a content restriction.
 
 ## Scheduler semantics
 

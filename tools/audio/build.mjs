@@ -77,10 +77,38 @@ const win = {};
 new Function("window", readingsJs)(win);
 const READINGS = win.MIL_READINGS || [];
 
+/* A positional index is a promise about a file that already exists on disk:
+   audio/d/417.mp3 says whatever text sat at index 417 the day it was made. The
+   drill and passage lists are sorted, so *growing* them reshuffles every index
+   after the first insertion — and because the builder skips clips it already
+   has, every existing file would silently keep its audio while the manifest
+   re-labelled it as a different phrase. Nothing would error; the app would
+   just say the wrong word.
+
+   So the shipped manifest is authoritative for slots it has already handed
+   out. A text keeps the index it owns, new texts are appended after the end,
+   and a slot whose text is no longer generated is left exactly where it is
+   rather than being reused. Adding tenses cost 8,195 new clips and re-recorded
+   none of the 2,855 that were already correct. */
+async function pinned(kind, texts) {
+  let prev = [];
+  try {
+    prev = JSON.parse(await fs.readFile(path.join(AUDIO, "manifest.json"), "utf8"))[kind] || [];
+  } catch {}
+  const slot = new Set(prev.filter((t) => t != null));
+  const out = prev.slice();
+  for (const t of texts) {
+    if (slot.has(t)) continue;
+    slot.add(t);
+    out.push(t);
+  }
+  return out;
+}
+
 /* Conjugation and grammar drills. Without these, "Tudo" and "Mistura
    aleatória" mix unrecorded cards into a session and the device voice — often
    Brazilian, often the wrong gender — appears mid-drill. */
-const DRILLS = await drillTexts(ROOT);
+const DRILLS = await pinned("drills", await drillTexts(ROOT));
 
 /* Individual words as they appear inside passages, so tapping any word in a
    story can play it. Only the ones no other set already covers — the deck and
@@ -88,20 +116,24 @@ const DRILLS = await drillTexts(ROOT);
    case-insensitively: "Reggae" and "reggae" are one recording. */
 const covered = new Set([
   ...WORDS.map((c) => sayable(c.p).toLowerCase()),
-  ...DRILLS.map((t) => sayable(t).toLowerCase()),
+  ...DRILLS.filter(Boolean).map((t) => sayable(t).toLowerCase()),
 ]);
-const pseen = new Set(), PWORDS = [];
+const pseen = new Set(), pfresh = [];
 for (const r of READINGS) {
   for (const l of r.lines || []) {
     for (const tok of (l.pt.match(/[A-Za-zÀ-ÿ]+/g) || [])) {
       const low = tok.toLowerCase();
       if (covered.has(low) || pseen.has(low)) continue;
       pseen.add(low);
-      PWORDS.push(low);
+      pfresh.push(low);
     }
   }
 }
-PWORDS.sort();
+pfresh.sort();
+/* Same pinning as the drills, and needed for the same reason: the drill set
+   growing changes what counts as already "covered", which would otherwise
+   shorten this list and shift every passage-word index behind it. */
+const PWORDS = await pinned("passage", pfresh);
 
 const jobs = [];
 if (!PICKED || ONLY_WORDS) {
@@ -122,12 +154,12 @@ if (!PICKED || ONLY_DRILLS) {
   // Indexed by position: the manifest ships the same array, so the app maps
   // text -> audio/d/<i>.mp3 without needing card ids to stay stable.
   DRILLS.forEach((t, i) => {
-    const text = sayable(t);
+    const text = t == null ? "" : sayable(t);
     if (text) jobs.push({ file: path.join(AUDIO, "d", `${i}.mp3`), text });
   });
 }
 if (!PICKED || ONLY_PWORDS) {
-  PWORDS.forEach((t, i) => jobs.push({ file: path.join(AUDIO, "p", `${i}.mp3`), text: t }));
+  PWORDS.forEach((t, i) => { if (t != null) jobs.push({ file: path.join(AUDIO, "p", `${i}.mp3`), text: t }); });
 }
 
 const chars = jobs.reduce((n, j) => n + j.text.length, 0);
