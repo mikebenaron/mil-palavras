@@ -92,6 +92,20 @@ input{font-family:inherit;font-size:inherit;color:inherit;background:none;border
 .masthead{text-align:center;padding-bottom:16px;border-bottom:1px solid var(--rule-3)}
 .wordmark{font-family:var(--serif);font-style:italic;font-weight:400;font-size:34px;line-height:1;color:var(--ink)}
 .caderno{margin-top:9px;font-size:9px;letter-spacing:.28em;text-transform:uppercase;font-weight:700;color:var(--terracotta)}
+/* compact word of the day, sitting in the header */
+.wodhead{display:block;width:100%;text-align:center;padding-top:16px;margin-top:14px;border-top:1px solid var(--rule)}
+.wodhead-k{font-size:9px;letter-spacing:.22em;text-transform:uppercase;font-weight:700;color:var(--teal)}
+.wodhead-w{font-family:var(--serif);font-size:30px;color:var(--ink);line-height:1.05;margin-top:8px}
+.wodhead-w.answer{color:var(--terracotta)}
+.wodhead-ipa{font-family:var(--mono);font-size:11px;color:var(--slate);margin-top:8px}
+/* home navigation tiles */
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
+.tile-nav{display:block;padding:15px 14px;background:var(--card);box-shadow:inset 0 0 0 1px var(--rule-2);text-align:left}
+.tile-nav .tno{font-family:var(--mono);font-size:10px;color:var(--terracotta)}
+.tile-nav .tct{font-family:var(--serif);font-size:19px;color:var(--ink);margin-top:7px;line-height:1.1}
+.tile-nav .tcs{font-size:10.5px;letter-spacing:.02em;color:var(--slate);margin-top:3px;text-transform:capitalize}
+.tile-nav:active{box-shadow:inset 0 0 0 1.5px var(--ink)}
+@media(hover:hover){.tile-nav:hover{box-shadow:inset 0 0 0 1.5px var(--ink)}}
 
 /* ---------- word of the day / card face ---------- */
 .wod{display:block;width:100%;text-align:center;padding:26px 0 22px;border-bottom:1px solid var(--rule-3)}
@@ -167,6 +181,9 @@ input{font-family:inherit;font-size:inherit;color:inherit;background:none;border
 .cardface .answer{font-family:var(--serif);font-size:28px;color:var(--terracotta);line-height:1.15}
 .cardtap{display:block;width:100%;text-align:center;padding:0}
 .tap-reveal{font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:oklch(65% .02 50);margin-top:26px}
+.conjmeaning{font-size:12.5px;color:var(--slate-en);margin-top:5px}
+.conjcue{font-family:var(--serif);font-size:26px;color:var(--terracotta);margin-top:20px;line-height:1.1}
+.conjcue .cuelabel{display:block;font-family:var(--sans);font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--slate);font-weight:700;margin-bottom:7px}
 
 /* note + footnote cards */
 .note{background:var(--card);box-shadow:inset 0 0 0 1px oklch(23% .025 45 / .12);padding:15px 16px;margin-top:14px}
@@ -310,9 +327,10 @@ input{font-family:inherit;font-size:inherit;color:inherit;background:none;border
 .webbody{display:flex;gap:44px;align-items:flex-start}
 .rail{width:172px;flex:none;position:sticky;top:20px}
 .rail .rhd{font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--slate);font-weight:700;margin-bottom:10px}
-.rail button{display:block;width:100%;padding:9px 0;font-family:var(--serif);font-size:14px;color:oklch(30% .02 45)}
-.rail button.on{color:var(--terracotta);font-weight:500}
-.rail button .rle{display:block;font-family:var(--sans);font-size:10.5px;color:var(--slate-en);margin-top:1px}
+.rail button{display:block;width:100%;padding:10px 12px;margin-bottom:6px;font-family:var(--serif);font-size:15px;
+  color:var(--ink);background:var(--card);box-shadow:inset 0 0 0 1px var(--rule-2)}
+.rail button.on{color:var(--terracotta);box-shadow:inset 0 0 0 1.5px var(--terracotta)}
+.rail button .rle{display:block;font-family:var(--sans);font-size:10px;color:var(--slate-en);margin-top:1px}
 @media(hover:hover){.rail button:hover{color:var(--ink)}.rail button.on:hover{color:var(--terracotta)}}
 .rail .quote{margin-top:22px;padding-top:16px;border-top:1px solid var(--rule-3)}
 .rail .quote .qp{font-family:var(--serif);font-style:italic;font-size:14px;line-height:1.6;color:var(--slate)}
@@ -1504,11 +1522,15 @@ function backBar(label, right){
 }
 
 /* ============================ HOME ============================ */
-var heroIdx = 0, heroFlipped = false;
-function heroCard(){
-  var due = dueList();
-  var pool = due.length ? due : CARDS.slice(0, 60);
-  return pool[heroIdx % pool.length];
+var heroFlipped = false;
+/* One fixed word per calendar day, drawn from real vocabulary. */
+function wordOfDay(){
+  var pool = CARDS.filter(function(c){
+    return c.c==="substantivo"||c.c==="verbo"||c.c==="adjetivo"||c.c==="expressao"||c.c==="adverbio";
+  });
+  if (!pool.length) pool = CARDS;
+  var idx = ((dayNo() % pool.length) + pool.length) % pool.length;
+  return pool[idx];
 }
 function greeting(){
   var hr = new Date().getHours();
@@ -1526,49 +1548,45 @@ function renderHomePhone(){
   var allowance = Math.min(newAllowance(), newPool().length);
   var learned = Object.keys(S.prog).length;
   var day = Math.max(1, S.seenDays||0);
-  var c = heroCard();
+  var c = wordOfDay();
   var pt = variants(c.p)[0];
   var vocab = 0, nouns = 0, conj = 0;
   for (var i=0;i<CARDS.length;i++){ var cc = CARDS[i].c;
     if (cc==="conjugacao") conj++; else if (cc!=="gramatica"){ vocab++; if (cc==="substantivo") nouns++; } }
 
   var items = [
-    {n:"01",p:"Rever hoje",e:"spaced repetition — the main event",nav:"review",tail:(due+allowance>0?String(due+allowance):"—")},
-    {n:"02",p:"Cartões",e:"flip through a set at your own pace",nav:"flash",tail:String(vocab)},
-    {n:"03",p:"Escolha múltipla",e:"four options, softer than recall",nav:"choice",tail:""},
-    {n:"04",p:"Escrever",e:"write the Portuguese, accents and all",nav:"type",tail:""},
-    {n:"05",p:"O ou A?",e:"drill noun gender before it sets wrong",nav:"gender",tail:String(nouns)},
-    {n:"06",p:"Conjugações",e:"every verb, every person",nav:"conj",tail:String(conj)},
-    {n:"07",p:"Dicionário",e:"words, verbs and grammar",nav:"browse",tail:String(CARDS.length)},
-    {n:"08",p:"Gramática",e:"articles, plurals, pronouns",nav:"grammar",tail:"6"},
-    {n:"09",p:"Método",e:"six habits that make it stick",nav:"method",tail:""},
-    {n:"10",p:"Definições",e:"pace, direction, your data",nav:"settings",tail:""}
+    {n:"01",p:"Rever hoje",e:"review",nav:"review",tail:(due+allowance>0?String(due+allowance):"—")},
+    {n:"02",p:"Cartões",e:"flashcards",nav:"flash",tail:String(vocab)},
+    {n:"03",p:"Escolha",e:"multiple choice",nav:"choice",tail:""},
+    {n:"04",p:"Escrever",e:"type it",nav:"type",tail:""},
+    {n:"05",p:"O ou A?",e:"noun gender",nav:"gender",tail:String(nouns)},
+    {n:"06",p:"Conjugações",e:"conjugations",nav:"conj",tail:String(conj)},
+    {n:"07",p:"Dicionário",e:"dictionary",nav:"browse",tail:String(CARDS.length)},
+    {n:"08",p:"Gramática",e:"grammar",nav:"grammar",tail:"6"},
+    {n:"09",p:"Método",e:"method",nav:"method",tail:""},
+    {n:"10",p:"Definições",e:"settings",nav:"settings",tail:""}
   ];
-  var list = items.map(function(it){
-    return '<button class="citem" data-nav="'+it.nav+'">'+
-      '<span class="no">'+it.n+'</span>'+
-      '<span class="ctbody"><span class="ct">'+esc(it.p)+'</span>'+
-      '<span class="cs">'+esc(it.e)+'</span></span>'+
-      (it.tail?'<span class="tail">'+esc(it.tail)+'</span>':'')+
+  var tiles = items.map(function(it){
+    return '<button class="tile-nav" data-nav="'+it.nav+'">'+
+      '<div class="tno">'+it.n+(it.tail?' · '+esc(it.tail):'')+'</div>'+
+      '<div class="tct">'+esc(it.p)+'</div>'+
+      '<div class="tcs">'+esc(it.e)+'</div>'+
     '</button>';
   }).join("");
 
-  var front =
-    '<div class="kicker">a palavra de hoje · word of the day</div>'+
-    '<div class="word">'+esc(pt)+'</div>'+
-    (c.ipa?'<div class="ipa">'+esc(c.ipa)+'</div>':'')+
-    '<div class="hint">toque para virar · tap to turn</div>';
-  var back =
-    '<div class="kicker">a palavra de hoje · word of the day</div>'+
-    '<div class="answer">'+esc(c.e)+'</div>'+
-    (c.ex?'<div class="ex">'+esc(c.ex)+'</div>'+(c.exE?'<div class="exe">'+esc(c.exE)+'</div>':''):'')+
-    '<div class="hint">toque para o próximo · tap for the next</div>';
+  var wodHead =
+    '<button class="wodhead'+(heroFlipped?' fade-in':'')+'" id="hero">'+
+      '<div class="wodhead-k">a palavra de hoje · word of the day</div>'+
+      (heroFlipped
+        ? '<div class="wodhead-w answer">'+esc(c.e)+'</div><div class="wodhead-ipa">'+esc(pt)+(c.ipa?' · '+esc(c.ipa):'')+'</div>'
+        : '<div class="wodhead-w">'+esc(pt)+'</div>'+(c.ipa?'<div class="wodhead-ipa">'+esc(c.ipa)+'</div>':''))+
+    '</button>';
 
   h(
     '<div class="masthead"><div class="wordmark">Mil Palavras</div>'+
-      '<div class="caderno">caderno · notebook · dia '+day+'</div></div>'+
-
-    '<button class="wod'+(heroFlipped?' fade-in':'')+'" id="hero">'+(heroFlipped?back:front)+'</button>'+
+      '<div class="caderno">caderno · notebook · dia '+day+'</div>'+
+      wodHead +
+    '</div>'+
 
     '<div class="kpis">'+
       '<div class="kpi terra"><div class="n">'+due+'</div><div class="lp">por rever</div><div class="le">due for review</div></div>'+
@@ -1576,7 +1594,7 @@ function renderHomePhone(){
       '<div class="kpi"><div class="n">'+learned+'</div><div class="lp">começadas</div><div class="le">words started</div></div>'+
     '</div>'+
 
-    '<div class="contents">'+list+'</div>'+
+    '<div class="tiles">'+tiles+'</div>'+
 
     '<div class="footer"><div class="fp">Funciona sem ligação à internet. Nada sai deste aparelho — o teu caderno é teu.</div>'+
       '<div class="fe">Works with no signal. Nothing leaves this device — your notebook is yours.</div></div>'
@@ -1587,13 +1605,14 @@ function renderHomePhone(){
   app.setAttribute("data-screen","home");
 }
 
-/* Shared hero flip handler for phone + web home. */
+/* Shared word-of-the-day flip: tap toggles the meaning, no rotation. */
 function bindHero(c){
   var hero = document.getElementById("hero");
   if (!hero) return;
   hero.addEventListener("click", function(){
-    if (heroFlipped) { heroFlipped = false; heroIdx++; renderHome(); }
-    else { heroFlipped = true; renderHome(); autoSay(c.p); }
+    heroFlipped = !heroFlipped;
+    renderHome();
+    if (heroFlipped) autoSay(c.p);
   });
 }
 
@@ -1633,7 +1652,7 @@ function renderHomeWeb(){
   var allowance = Math.min(newAllowance(), newPool().length);
   var learned = Object.keys(S.prog).length;
   var reviewN = due + allowance;
-  var c = heroCard();
+  var c = wordOfDay();
   var pt = variants(c.p)[0];
   var k = homeCounts();
   var mins = Math.max(1, Math.round(k.dueN * 0.5));
@@ -1859,15 +1878,22 @@ function renderFlip(head, c){
   var frontIpa = (frontIsPt && c.ipa) ? c.ipa : "";
   var backIpa = (backIsPt && c.ipa) ? c.ipa : "";
 
-  var faceInner =
-    '<div class="klass">' + esc(klass) + (isNew ? " · nova" : "") + '</div>' +
-    '<div class="word">' + esc(front) + '</div>' +
-    (frontIpa ? '<div class="ipa">' + esc(frontIpa) + '</div>' : '') +
-    (isDrill && c.qs ? '<div class="ipa">' + esc(c.qs) + '</div>' : '') +
-    (SES.shown
-      ? '<div class="hr"></div><div class="answer">' + esc(back) + '</div>' +
-        (backIpa ? '<div class="ipa">' + esc(backIpa) + '</div>' : '')
-      : '<div class="tap-reveal">toque para revelar · tap to reveal</div>');
+  var faceInner;
+  if (isDrill && c.c === "conjugacao") {
+    faceInner = conjPromptFace(c) +
+      (SES.shown ? '<div class="hr"></div><div class="answer">' + esc(c.p) + '</div>'
+                 : '<div class="tap-reveal">toque para conjugar · tap to conjugate</div>');
+  } else {
+    faceInner =
+      '<div class="klass">' + esc(klass) + (isNew ? " · nova" : "") + '</div>' +
+      '<div class="word">' + esc(front) + '</div>' +
+      (frontIpa ? '<div class="ipa">' + esc(frontIpa) + '</div>' : '') +
+      (isDrill && c.qs ? '<div class="ipa">' + esc(c.qs) + '</div>' : '') +
+      (SES.shown
+        ? '<div class="hr"></div><div class="answer">' + esc(back) + '</div>' +
+          (backIpa ? '<div class="ipa">' + esc(backIpa) + '</div>' : '')
+        : '<div class="tap-reveal">toque para revelar · tap to reveal</div>');
+  }
 
   var notes = "";
   if (SES.shown) {
@@ -1928,6 +1954,19 @@ function applyGrade(c, g){
   renderSession();
 }
 
+/* Clear prompt for a conjugation card: verb + tense up top, pronoun as the cue.
+   qs is "verb · tense · meaning"; s is "tense · regular|irregular". */
+function conjPromptFace(c){
+  var parts = (c.qs || "").split(" · ");
+  var verb = parts[0] || c.v || "";
+  var meaning = parts[2] || "";
+  var tensePT = /past|pret/i.test((parts[1]||"") + " " + (c.s||"")) ? "pretérito · past tense" : "presente · present tense";
+  return '<div class="klass">' + esc(tensePT) + '</div>' +
+    '<div class="word" style="font-size:34px">' + esc(verb) + '</div>' +
+    (meaning ? '<div class="conjmeaning">' + esc(meaning) + '</div>' : '') +
+    '<div class="conjcue"><span class="cuelabel">conjuga para · conjugate for</span>' + esc(c.q) + '</div>';
+}
+
 /* reveal note + footnote cards (shared by review, choice, type, gender) */
 function noteCards(c){
   var s = "";
@@ -1970,12 +2009,13 @@ function renderChoice(head, c){
       esc(txt) + '</button>';
   }).join("");
 
-  h(head +
-    '<div class="cardface" style="padding:18px 4px 6px">' +
-      '<div class="klass">' + esc(c.k ? c.s : CLASS_LABEL[c.c]) + '</div>' +
+  var promptFace = (c.k && c.c === "conjugacao")
+    ? conjPromptFace(c)
+    : '<div class="klass">' + esc(c.k ? c.s : CLASS_LABEL[c.c]) + '</div>' +
       '<div class="word" style="font-size:40px">' + esc(prompt) + '</div>' +
-      (c.k && c.qs ? '<div class="ipa">' + esc(c.qs) + '</div>' : '') +
-    '</div>' +
+      (c.k && c.qs ? '<div class="ipa">' + esc(c.qs) + '</div>' : '');
+  h(head +
+    '<div class="cardface" style="padding:18px 4px 6px">' + promptFace + '</div>' +
     '<div class="choices">' + opts + '</div>' +
     (SES.answered ? sayLine(c) + noteCards(c) : "") +
     (SES.answered ? '<button class="btn fill block" style="margin-top:20px" data-next="1">Seguinte · next</button>' : ''));
