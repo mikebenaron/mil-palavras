@@ -1882,7 +1882,7 @@ function renderFlip(head, c){
     '<button class="cardtap" id="cd">' +
       '<div class="cardface' + (SES.shown ? " fade-in" : "") + '">' + faceInner + '</div>' +
     '</button>' +
-    sayLine(c) + notes +
+    (SES.shown ? sayLine(c) : "") + notes +
     (SES.shown ? grades : '<button class="btn fill block" style="margin-top:22px" data-show="1">Mostrar resposta · show answer</button>'));
 
   var cd = document.getElementById("cd");
@@ -1898,23 +1898,37 @@ function gbtn(g, lab, cls, id){
   return '<button class="grade ' + cls + '" data-grade="' + g + '"><span class="gl">' + lab +
     '</span><span class="gi">' + previewIv(id, g) + '</span></button>';
 }
-/* small "ouvir · listen" audio trigger, shown once the card is revealed */
+/* small "ouvir · listen" audio trigger (caller decides when to show it) */
 function sayLine(c){
-  if (!SES.shown || !Speech.supported()) return "";
+  if (!Speech.supported()) return "";
   return '<div style="text-align:center;margin-top:8px"><button class="txtbtn" data-say="' + esc(c.p) + '">' +
     '<svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
     '<path d="M4 7.5h2.5L10 4.5v11L6.5 12.5H4z" fill="currentColor" stroke="none"/><path d="M13 7.4a3.6 3.6 0 010 5.2"/></svg>ouvir · listen</button></div>';
 }
+function markMissed(c){
+  if (!SES.missed) SES.missed = [];
+  if (!SES.missed.some(function(x){ return x.i === c.i; })) SES.missed.push(c);
+}
 function applyGrade(c, g){
   grade(c.i, g);
   if (g === 1) {
-    SES.wrong++;
+    SES.wrong++; markMissed(c);
     // requeue a few cards later so it comes back inside this session
     var at = Math.min(SES.q.length, SES.i + 1 + Math.floor(Math.random()*4) + 4);
     SES.q.splice(at, 0, c);
   } else { SES.right++; }
   SES.done++; SES.i++; SES.shown = false;
   renderSession();
+}
+
+/* reveal note + footnote cards (shared by review, choice, type, gender) */
+function noteCards(c){
+  var s = "";
+  if (c.ex) s += '<div class="note"><div class="nl">Numa frase · in a sentence</div><div class="np">' +
+    esc(c.ex) + '</div>' + (c.exE ? '<div class="ne">' + esc(c.exE) + '</div>' : '') + '</div>';
+  if (c.note) s += '<div class="footnote"><div class="np">' + esc(c.note) + '</div>' +
+    (c.noteE ? '<div class="ne">' + esc(c.noteE) + '</div>' : '') + '</div>';
+  return s;
 }
 
 /* ---- multiple choice ---- */
@@ -1939,36 +1953,32 @@ function renderChoice(head, c){
   if (c.k) prompt = c.q;
   var opts = SES.opts.map(function(o){
     var txt = dir === "pt" ? o.e : variants(o.p)[0];
-    var cls = "ch" + (dir === "pt" ? "" : " ");
     var state = "";
     if (SES.answered) {
       if (o.i === c.i) state = " right";
       else if (o.i === SES.chosen) state = " wrong";
       else state = " dim";
     }
-    return '<button class="ch' + state + '" data-opt="' + o.i + '"' + (SES.answered ? " disabled" : "") + '>' +
-      (dir === "pt" ? esc(txt) : '<span class="pt">' + esc(txt) + '</span>') + '</button>';
+    return '<button class="choice' + state + '" data-opt="' + o.i + '"' + (SES.answered ? " disabled" : "") + '>' +
+      esc(txt) + '</button>';
   }).join("");
 
-  h(head + '<div class="sess">' +
-    '<div class="tile prompt">' + tileFrame() +
+  h(head +
+    '<div class="cardface" style="padding:18px 4px 6px">' +
       '<div class="klass">' + esc(c.k ? c.s : CLASS_LABEL[c.c]) + '</div>' +
-      '<div><div class="' + (dir === "pt" ? "word" : "word en") + '">' + esc(prompt) + '</div>' +
-      (c.k ? '<div class="word-sub">' + esc(c.qs) + '</div>' : "") + '</div>' +
-      (SES.answered || dir === "pt" ? sayBtn(c.p) : "") +
+      '<div class="word" style="font-size:40px">' + esc(prompt) + '</div>' +
+      (c.k && c.qs ? '<div class="ipa">' + esc(c.qs) + '</div>' : '') +
     '</div>' +
     '<div class="choices">' + opts + '</div>' +
-    (SES.answered ? tipsFor(c) : "") +
-    '<div class="ctl">' +
-    (SES.answered ? '<button class="btn" data-next="1">Next</button>' : '') +
-    '</div></div>');
+    (SES.answered ? sayLine(c) + noteCards(c) : "") +
+    (SES.answered ? '<button class="btn fill block" style="margin-top:20px" data-next="1">Seguinte · next</button>' : ''));
 
   on("[data-opt]","click",function(e){
     if (SES.answered) return;
     SES.chosen = +e.currentTarget.getAttribute("data-opt");
     SES.answered = true;
     autoSay(c.p);
-    if (SES.chosen === c.i) SES.right++; else SES.wrong++;
+    if (SES.chosen === c.i) SES.right++; else { SES.wrong++; markMissed(c); }
     SES.done++; markStudied(); save();
     renderSession();
   });
@@ -1980,25 +1990,27 @@ function nextQ(){ SES.opts = null; SES.answered = false; SES.chosen = null; SES.
 /* ---- type it ---- */
 var ACCENTS = ["á","à","â","ã","ç","é","ê","í","ó","ô","õ","ú"];
 function renderType(head, c){
-  var accents = ACCENTS.map(function(a){ return '<button data-acc="' + a + '">' + a + '</button>'; }).join("");
+  var accents = ACCENTS.map(function(a){ return '<button class="akey" data-acc="' + a + '">' + a + '</button>'; }).join("") +
+    '<button class="akey" data-back="1" aria-label="backspace">⌫</button>';
   var v = SES.verdict;
-  h(head + '<div class="sess">' +
-    '<div class="tile prompt">' + tileFrame() +
-      '<div class="klass">' + esc(c.k ? c.s : CLASS_LABEL[c.c]) + '</div>' +
-      '<div><div class="word en">' + esc(c.k ? c.q : c.e) + '</div>' +
-      (c.k ? '<div class="word-sub">' + esc(c.qs) + '</div>' : "") + '</div>' +
-      (v ? sayBtn(c.p) : "") +
+  var vlabel = v ? (v.k === "ok" ? "Certo · correct" : v.k === "near" ? "Quase certo · almost" : "Não é bem · not quite") : "";
+  var vwrong = v && v.k === "no";
+  h(head +
+    '<div class="cardface" style="padding:12px 4px 6px">' +
+      '<div class="klass">escreve em português · write it in portuguese</div>' +
+      '<div class="typeprompt">' + esc(c.k ? c.q : c.e) + '</div>' +
+      (c.k && c.qs ? '<div class="ipa" style="margin-top:-16px;margin-bottom:10px">' + esc(c.qs) + '</div>' : '') +
     '</div>' +
-    '<input class="answer" id="ans" autocapitalize="none" autocorrect="off" spellcheck="false" ' +
-      'autocomplete="off" placeholder="em português…"' + (v ? " disabled" : "") +
-      ' value="' + esc(SES.typed || "") + '">' +
+    '<input class="typeline" id="ans" autocapitalize="none" autocorrect="off" spellcheck="false" ' +
+      'autocomplete="off" placeholder="…"' + (v ? " disabled" : "") + ' value="' + esc(SES.typed || "") + '">' +
     (v ? "" : '<div class="accents">' + accents + '</div>') +
-    (v ? '<div class="verdict ' + v.k + '">' + v.msg + '<b>' + esc(c.p) + '</b></div>' : "") +
-    (v ? tipsFor(c) : "") +
-    '<div class="ctl">' +
-    (v ? '<button class="btn" data-next="1">Next</button>'
-       : '<button class="btn" data-check="1">Check</button>') +
-    '</div></div>');
+    (v ? '<div class="explain"' + (vwrong ? ' style="box-shadow:inset 3px 0 0 var(--vinho)"' : '') + '>' +
+        '<div class="eyebrow ' + (vwrong ? '' : 'teal') + '" style="margin-bottom:9px">' + vlabel + '</div>' +
+        '<div class="np" style="font-family:var(--serif);font-size:22px;color:var(--ink)">' + esc(c.p) + '</div>' +
+        '<div class="ne">' + esc(c.e) + (c.ipa ? ' · ' + esc(c.ipa) : '') + '</div></div>' + noteCards(c) : "") +
+    (v ? sayLine(c) : "") +
+    (v ? '<button class="btn fill block" style="margin-top:20px" data-next="1">Seguinte · next</button>'
+       : '<button class="btn fill block" style="margin-top:20px" data-check="1">Verificar · check</button>'));
 
   var input = document.getElementById("ans");
   if (!v) { input.focus(); }
@@ -2008,6 +2020,12 @@ function renderType(head, c){
     var s = input.selectionStart || input.value.length;
     input.value = input.value.slice(0,s) + a + input.value.slice(input.selectionEnd || s);
     input.focus(); input.setSelectionRange(s+1, s+1);
+  });
+  on("[data-back]","click",function(){
+    var s = input.selectionStart, e2 = input.selectionEnd;
+    if (s === e2 && s > 0) { input.value = input.value.slice(0, s-1) + input.value.slice(s); s--; }
+    else if (s !== e2) { input.value = input.value.slice(0, s) + input.value.slice(e2); }
+    input.focus(); input.setSelectionRange(s, s);
   });
   on("[data-check]","click",check);
   on("[data-next]","click",function(){ SES.verdict = null; SES.typed = ""; nextQ(); });
@@ -2025,7 +2043,7 @@ function renderType(head, c){
     if (exact) { SES.verdict = { k:"ok", msg:"Exactly right." }; SES.right++; }
     else if (loose) { SES.verdict = { k:"near", msg:"Right word — the accents are off." }; SES.right++; }
     else if (noArt) { SES.verdict = { k:"near", msg:"Right noun, but it needs its article — gender is part of the word." }; SES.right++; }
-    else { SES.verdict = { k:"no", msg:"Not quite." }; SES.wrong++; }
+    else { SES.verdict = { k:"no", msg:"Not quite." }; SES.wrong++; markMissed(c); }
     SES.done++; markStudied(); save();
     autoSay(c.p);
     renderSession();
@@ -2036,24 +2054,24 @@ function renderType(head, c){
 function renderGender(head, c){
   var bare = c.b || stripArticle(c.p);
   var ans = SES.chosen;
-  h(head + '<div class="sess">' +
-    '<div class="tile prompt">' + tileFrame() +
-      '<div class="klass">substantivo</div>' +
-      '<div><div class="word">' + esc(bare) + '</div>' +
-      (ans ? '<div class="word-sub">' + esc(c.e) + '</div>' : '') + '</div>' +
-      (ans ? sayBtn(c.p) : "") +
+  var rule = ans ? '<div class="explain">' +
+      '<div class="np" style="font-family:var(--serif);font-size:19px;color:var(--ink)">' + esc(c.g) + ' ' + esc(bare) + '</div>' +
+      '<div class="ne">' + (c.g === "o" ? "Masculino — leva <i>o</i>." : "Feminino — leva <i>a</i>.") + ' · ' +
+        (c.g === "o" ? "Masculine — takes <i>o</i>." : "Feminine — takes <i>a</i>.") + '</div></div>' + noteCards(c) : "";
+  h(head +
+    '<div class="cardface" style="padding:18px 4px 6px">' +
+      '<div class="klass">qual é o artigo? · which article?</div>' +
+      '<div class="genderword">' + esc(bare) + '</div>' +
+      '<div class="gendersub">' + esc(c.e) + '</div>' +
     '</div>' +
-    '<div class="oa">' +
-      oab("o", c.g, ans) + oab("a", c.g, ans) +
-    '</div>' +
-    (ans ? tipsFor(c) : "") +
-    '<div class="ctl">' +
-    (ans ? '<button class="btn" data-next="1">Next</button>' : '') +
-    '</div></div>');
+    '<div class="genderopts">' + oab("o", c.g, ans) + oab("a", c.g, ans) + '</div>' +
+    rule +
+    (ans ? sayLine(c) : "") +
+    (ans ? '<button class="btn fill block" style="margin-top:20px" data-next="1">Seguinte · next</button>' : ''));
   on("[data-oa]","click",function(e){
     if (SES.chosen) return;
     SES.chosen = e.currentTarget.getAttribute("data-oa");
-    if (SES.chosen === c.g) SES.right++; else SES.wrong++;
+    if (SES.chosen === c.g) SES.right++; else { SES.wrong++; markMissed(c); }
     SES.done++; markStudied(); save();
     autoSay(c.p);
     renderSession();
@@ -2062,6 +2080,15 @@ function renderGender(head, c){
   bindSay(); bindEnd();
 }
 function oab(letter, correct, chosen){
+  var cls = "gopt";
+  if (chosen) {
+    if (letter === correct) cls += " right";
+    else if (letter === chosen) cls += " wrong";
+    else cls += " dim";
+  }
+  return '<button class="' + cls + '" data-oa="' + letter + '">' + letter + '</button>';
+}
+function oabOLD(letter, correct, chosen){
   var cls = "";
   if (chosen) {
     if (letter === correct) cls = " right";
@@ -2074,26 +2101,36 @@ function bindEnd(){ on("[data-end]","click",function(){ SES = null; renderHome()
 
 /* ---- summary ---- */
 function renderSummary(){
-  var s = SES || { right:0, wrong:0, total:0, mode:"review" };
+  var s = SES || { right:0, wrong:0, total:0, mode:"review", missed:[] };
+  var missed = (s.missed || []).slice(0, 8);
   var total = s.right + s.wrong;
-  var pctv = total ? Math.round(s.right / total * 100) : 0;
-  var line;
-  if (s.mode === "review") line = "Scheduled. Come back tomorrow and the ones you wobbled on will be waiting first.";
-  else if (pctv >= 90) line = "That set is close to done. Try a harder one, or switch the direction to English → Portuguese.";
-  else if (pctv >= 60) line = "Solid. The misses are the useful part — they'll come round again sooner.";
-  else line = "A rough round, which means you picked the right set. Run it again.";
+  var mins = Math.max(1, Math.round(total * 0.5));
+  var again = s.mode === "review" ? "Mais dez palavras · ten more" : "Outra ronda · another round";
   SES = null;
-  h(backBar("Home") +
-    '<div class="done"><div class="mark">✦</div>' +
-    '<h2>' + (total ? pctv + "% right" : "Session ended") + '</h2>' +
-    '<p>' + esc(line) + '</p>' +
-    '<div class="stats" style="max-width:320px;margin:0 auto 20px">' +
-      '<div class="stat"><b class="num">' + s.right + '</b><span>right</span></div>' +
-      '<div class="stat"><b class="num" style="color:var(--vinho)">' + s.wrong + '</b><span>missed</span></div>' +
-      '<div class="stat warm"><b class="num">' + (S.streak||0) + '</b><span>streak</span></div>' +
+
+  var leech = missed.length ? '<div style="padding:18px 0">' +
+    '<div class="sectlabel" style="margin-bottom:10px">Voltam amanhã · back tomorrow</div>' +
+    missed.map(function(c){
+      var l = (S.prog[c.i] && S.prog[c.i].l) || 1;
+      return '<div class="filarow"><span class="fp" style="font-size:18px">' + esc(variants(c.p)[0]) +
+        '</span><span class="fv" style="color:var(--terracotta)">×' + l + '</span></div>';
+    }).join("") + '</div>' : '<div style="height:16px"></div>';
+
+  h(
+    '<div style="text-align:center;padding:30px 0 20px;border-bottom:2px solid var(--ink)">' +
+      '<div style="font-family:var(--serif);font-style:italic;font-size:40px;color:var(--ink);line-height:1.1">Sessão completa</div>' +
+      '<div style="font-size:13px;color:var(--slate-en);margin-top:6px">Session complete</div>' +
+      (total ? '<div class="eyebrow" style="margin-top:12px">' + total + ' cartões · ' + mins + ' ' +
+        (mins === 1 ? "minuto" : "minutos") + ' · cards, minutes</div>' : '') +
     '</div>' +
-    '<button class="btn" data-nav="review">Keep going</button>' +
-    '<div style="height:9px"></div><button class="btn quiet" data-nav="home">Done for now</button></div>');
+    '<div class="kpis" style="border-bottom:1px solid var(--rule-3)">' +
+      '<div class="kpi teal"><div class="n">' + s.right + '</div><div class="lp">certas</div><div class="le">correct</div></div>' +
+      '<div class="kpi terra"><div class="n">' + s.wrong + '</div><div class="lp">falhadas</div><div class="le">missed</div></div>' +
+    '</div>' +
+    leech +
+    '<button class="btn fill block" data-nav="review">' + again + '</button>' +
+    '<button class="btn outline block" style="margin-top:9px" data-nav="home">Voltar ao início · back home</button>'
+  );
   bindNav();
 }
 
