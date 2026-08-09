@@ -1,17 +1,16 @@
 /* ============================================================
-   Mil Palavras — cross-device sync (Supabase, offline-first)
+   Mil Palavras — accounts + cross-device sync (Supabase)
 
-   The app itself is unchanged and keeps working entirely from
-   localStorage. This layer sits on top:
-     • pull() on launch / sign-in  — fetch the cloud copy and,
-       if it's newer, apply it locally.
-     • push()  after each local save — send the new state up
-       (debounced), when online and signed in.
+   Account-first: the app is gated behind a login screen. Once
+   signed in, progress is tied to the user's account and synced.
+   After the first online login the session is cached, so later
+   launches work fully offline.
 
-   Merge is last-write-wins by S._updatedAt (stamped on every
-   local save). Correct for one person using their devices one
-   at a time; the only lossy case is editing two devices while
-   BOTH are offline, then reconnecting.
+     • gate()        — decide on launch: show login, or enter app
+     • login/signup  — email + password (Supabase auth)
+     • enterApp()    — load this account's progress, then run app
+     • push()/pull() — keep local and cloud in step (offline-first,
+                       last-write-wins by S._updatedAt)
    ============================================================ */
 (function () {
   "use strict";
@@ -30,64 +29,124 @@
       })
     : null;
 
-  var bridge = null;     // { get, set, persist, save, render, freshState }
+  var bridge = null;       // { get, set, persist, save, render, freshState }
   var session = null;
-  var applying = false;  // true while writing a pulled state, so we don't echo it back up
+  var applying = false;    // true while writing a pulled/loaded state (suppresses echo push)
   var pushTimer = null;
   var status = "";
+  var listening = false;
+
+  var BADGE =
+    "<svg viewBox='0 0 32 32' xmlns='http://www.w3.org/2000/svg'>" +
+    "<rect width='32' height='32' fill='#FCFBF8'/>" +
+    "<rect x='3.5' y='3.5' width='25' height='25' fill='none' stroke='#1B4D8F' stroke-width='1.5'/>" +
+    "<rect x='6.5' y='6.5' width='19' height='19' fill='none' stroke='#4E7FBE' stroke-width='.8'/>" +
+    "<rect x='13' y='13' width='6' height='6' fill='#1B4D8F' transform='rotate(45 16 16)'/></svg>";
 
   // Public API used by the app (index.html).
   window.MilSync = {
-    attach: function (b) { bridge = b; boot(); },
+    attach: function (b) { bridge = b; injectStyles(); },
+    gate: gate,
     push: function (state) { if (client && session && !applying) schedulePush(state); },
-    mount: renderMount,
+    mount: renderAccountPanel,
     isConfigured: function () { return configured; }
   };
 
-  function boot() {
-    if (!client) return; // not wired to a project yet — UI will say so
-    client.auth.getSession().then(function (r) {
-      session = (r && r.data && r.data.session) || null;
-      renderMount();
-      if (session) pull();
-    });
-    client.auth.onAuthStateChange(function (_evt, s) {
-      var prev = session;
+  /* --------------------------- gate --------------------------- */
+
+  function gate() {
+    if (!client) { bridge.render(); return; }   // misconfigured — don't lock the user out
+    setupListener();
+    client.auth.getSession()
+      .then(function (r) {
+        session = (r && r.data && r.data.session) || null;
+        if (session) enterApp();
+        else renderLogin("signin");
+      })
+      .catch(function () { renderLogin("signin"); });
+  }
+
+  function setupListener() {
+    if (listening) return;
+    listening = true;
+    client.auth.onAuthStateChange(function (evt, s) {
       session = s || null;
-      renderMount();
-      var changed = (!prev && session) || (prev && session && prev.user.id !== session.user.id);
-      if (session && changed) pull();
+      if (evt === "SIGNED_IN") enterApp();
+      else if (evt === "SIGNED_OUT") { resetLocal(); renderLogin("signin"); }
+      else if (evt === "PASSWORD_RECOVERY") renderSetPassword();
+      // INITIAL_SESSION / TOKEN_REFRESHED / USER_UPDATED: no UI change needed
     });
+  }
+
+  /* ------------------------- app entry ------------------------ */
+
+  function enterApp() {
+    setStatus("Syncing…");
+    var p;
+    try { p = syncUserData(); } catch (e) { p = Promise.reject(e); }
+    Promise.resolve(p)
+      .then(function () { setStatus("Synced · " + clock()); })
+      .catch(function () { /* offline / error — fall back to the local cache */ })
+      .then(function () { bridge.render(); });   // always enter the app
+  }
+
+  // Refresh from the server without navigating (used by "Sync now" in Settings).
+  function pullQuiet() {
+    setStatus("Syncing…");
+    var p;
+    try { p = syncUserData(); } catch (e) { p = Promise.reject(e); }
+    Promise.resolve(p)
+      .then(function () { setStatus("Synced · " + clock()); })
+      .catch(function () { setStatus("Offline — will sync later"); });
   }
 
   function tsOf(x) { return (x && x._updatedAt) || 0; }
 
-  function pull() {
-    if (!client || !session) return;
-    setStatus("Syncing…");
-    client.from("progress")
-      .select("data")
-      .eq("user_id", session.user.id)
-      .maybeSingle()
+  // Reconcile this account's progress between the server and the local cache.
+  function syncUserData() {
+    var U = session.user.id;
+    return client.from("progress").select("data").eq("user_id", U).maybeSingle()
       .then(function (res) {
-        if (res.error) { setStatus("Sync error"); return; }
+        if (res.error) throw res.error;
         var remote = res.data ? res.data.data : null;
         var local = bridge.get();
-        var localNewer = !remote || tsOf(local) > tsOf(remote);
+        var localIsThisUser = local && local._uid === U;
 
-        if (remote && tsOf(remote) > tsOf(local)) {
-          applying = true;
-          bridge.set(remote);
-          bridge.persist();   // raw localStorage write — no timestamp bump, no push
-          applying = false;
-          bridge.render();
+        if (remote) {
+          // Server has this account's data. Use it unless the local copy is
+          // this same user's and strictly newer (studied offline, then online).
+          if (localIsThisUser && tsOf(local) > tsOf(remote)) {
+            doPush(local);
+          } else {
+            remote._uid = U;
+            applyState(remote);
+          }
+        } else {
+          // No server row yet for this account.
+          if (local && local._uid && local._uid !== U) {
+            // Someone else used this device — start this account clean.
+            var fresh = bridge.freshState(); fresh._uid = U; applyState(fresh);
+            doPush(fresh);
+          } else {
+            // Claim the current local progress for this account and seed the server.
+            local._uid = U; bridge.persist(); doPush(local);
+          }
         }
-
-        if (localNewer) doPush(bridge.get());
-        else setStatus("Synced · " + clock());
-      })
-      .catch(function () { setStatus("Offline"); });
+      });
   }
+
+  function applyState(ns) {
+    applying = true;
+    bridge.set(ns);
+    bridge.persist();      // raw save — no timestamp bump, no echo push
+    applying = false;
+  }
+
+  function resetLocal() {
+    applyState(bridge.freshState());
+  }
+
+  /* --------------------------- push --------------------------- */
 
   function schedulePush(state) {
     if (pushTimer) clearTimeout(pushTimer);
@@ -96,6 +155,7 @@
 
   function doPush(state) {
     if (!client || !session) return;
+    if (state && !state._uid) state._uid = session.user.id;
     setStatus("Saving…");
     client.from("progress")
       .upsert({
@@ -107,69 +167,170 @@
       .catch(function () { setStatus("Offline — will sync later"); });
   }
 
-  /* ----------------------------- UI ----------------------------- */
+  /* ------------------------ login screen ---------------------- */
 
-  function renderMount() {
+  function renderLogin(mode) {
+    mode = mode || "signin";
+    var signup = mode === "signup";
+    var root = document.getElementById("app");
+    root.innerHTML =
+      '<div class="auth-wrap"><div class="auth-card">' +
+        '<div class="auth-brand"><div class="auth-badge">' + BADGE + '</div>' +
+          '<div class="auth-title">Mil Palavras</div>' +
+          '<div class="auth-sub">European Portuguese</div></div>' +
+        '<div class="seg auth-seg">' +
+          '<button class="' + (signup ? "" : "on") + '" data-mode="signin">Sign in</button>' +
+          '<button class="' + (signup ? "on" : "") + '" data-mode="signup">Create account</button>' +
+        '</div>' +
+        '<input id="authEmail" type="email" inputmode="email" autocomplete="email" placeholder="Email">' +
+        '<input id="authPass" type="password" autocomplete="' + (signup ? "new-password" : "current-password") + '" placeholder="Password">' +
+        (signup ? '<div class="auth-note">At least 6 characters.</div>' : "") +
+        '<button class="btn auth-primary" data-act="submit">' + (signup ? "Create account" : "Sign in") + '</button>' +
+        (signup ? "" : '<button class="auth-link" data-act="forgot">Forgot password?</button>') +
+        '<div class="auth-status" id="authStatus"></div>' +
+      '</div></div>';
+
+    each(root, "[data-mode]", "click", function (e) {
+      renderLogin(e.currentTarget.getAttribute("data-mode"));
+    });
+    var pass = root.querySelector("#authPass");
+    pass.addEventListener("keydown", function (e) { if (e.key === "Enter") submit(); });
+    root.querySelector('[data-act="submit"]').addEventListener("click", submit);
+    var forgot = root.querySelector('[data-act="forgot"]');
+    if (forgot) forgot.addEventListener("click", doForgot);
+
+    function creds() {
+      return {
+        email: (root.querySelector("#authEmail").value || "").trim(),
+        password: root.querySelector("#authPass").value || ""
+      };
+    }
+    function submit() {
+      var c = creds();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c.email)) return authStatus("Enter a valid email address.", "err");
+      if (c.password.length < 6) return authStatus("Password must be at least 6 characters.", "err");
+      authStatus(signup ? "Creating account…" : "Signing in…");
+      if (signup) {
+        client.auth.signUp({
+          email: c.email, password: c.password,
+          options: { emailRedirectTo: redirectURL() }
+        }).then(function (res) {
+          if (res.error) return authStatus(res.error.message, "err");
+          if (res.data.session) authStatus("Account created!", "ok");       // confirmation disabled → signed in
+          else authStatus("Account created. Check your email to confirm, then sign in.", "ok");
+        }).catch(function () { authStatus("Couldn't create the account — try again.", "err"); });
+      } else {
+        client.auth.signInWithPassword({ email: c.email, password: c.password })
+          .then(function (res) {
+            if (res.error) authStatus(friendly(res.error.message), "err");
+            else authStatus("Signing in…");                                  // SIGNED_IN → enterApp
+          })
+          .catch(function () { authStatus("Couldn't sign in — try again.", "err"); });
+      }
+    }
+    function doForgot() {
+      var email = (root.querySelector("#authEmail").value || "").trim();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return authStatus("Type your email above first, then tap Forgot password.", "err");
+      authStatus("Sending reset link…");
+      client.auth.resetPasswordForEmail(email, { redirectTo: redirectURL() })
+        .then(function (res) { authStatus(res.error ? res.error.message : "Password reset link sent — check your email.", res.error ? "err" : "ok"); })
+        .catch(function () { authStatus("Couldn't send the reset link.", "err"); });
+    }
+  }
+
+  // Shown when the user returns from a password-reset email.
+  function renderSetPassword() {
+    var root = document.getElementById("app");
+    root.innerHTML =
+      '<div class="auth-wrap"><div class="auth-card">' +
+        '<div class="auth-brand"><div class="auth-badge">' + BADGE + '</div>' +
+          '<div class="auth-title">Set a new password</div></div>' +
+        '<input id="authPass" type="password" autocomplete="new-password" placeholder="New password">' +
+        '<div class="auth-note">At least 6 characters.</div>' +
+        '<button class="btn auth-primary" data-act="save">Save password</button>' +
+        '<div class="auth-status" id="authStatus"></div>' +
+      '</div></div>';
+    root.querySelector('[data-act="save"]').addEventListener("click", function () {
+      var pw = root.querySelector("#authPass").value || "";
+      if (pw.length < 6) return authStatus("Password must be at least 6 characters.", "err");
+      authStatus("Saving…");
+      client.auth.updateUser({ password: pw })
+        .then(function (res) {
+          if (res.error) authStatus(res.error.message, "err");
+          else enterApp();     // already has a session from the recovery link
+        })
+        .catch(function () { authStatus("Couldn't save the password.", "err"); });
+    });
+  }
+
+  function authStatus(msg, kind) {
+    var e = document.getElementById("authStatus");
+    if (!e) return;
+    e.textContent = msg;
+    e.className = "auth-status" + (kind ? " " + kind : "");
+  }
+  function friendly(m) {
+    if (/invalid login/i.test(m)) return "Email or password is incorrect.";
+    if (/not confirmed/i.test(m)) return "Please confirm your email first (check your inbox).";
+    return m;
+  }
+
+  /* --------------- account panel inside Settings -------------- */
+
+  function renderAccountPanel() {
     var el = document.getElementById("syncMount");
     if (!el) return;
-
-    if (!client) {
-      el.innerHTML = hint("Sync isn't switched on in this build yet.");
-      return;
-    }
-
-    if (session) {
-      el.innerHTML =
-        hint("Signed in as <b>" + esc(session.user.email || "your account") +
-             "</b>. Your progress syncs to every device you sign in on.") +
-        '<div class="foot" style="text-align:left" id="syncStatus">' + esc(status || "Synced") + '</div>' +
-        '<div class="stack mt">' +
-          '<button class="btn quiet" data-sync="pull">Sync now</button>' +
-          '<button class="btn quiet" data-sync="signout">Sign out</button>' +
-        '</div>';
-      el.querySelector('[data-sync="pull"]').addEventListener("click", pull);
-      el.querySelector('[data-sync="signout"]').addEventListener("click", function () {
-        client.auth.signOut().then(function () { session = null; setStatus(""); renderMount(); });
-      });
-    } else {
-      el.innerHTML =
-        hint("Sign in with your email to sync across devices. We email you a one-tap link — no password to remember.") +
-        '<div class="field" style="margin-top:6px">' +
-          '<input id="syncEmail" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" ' +
-          'style="width:100%;padding:11px 12px;border:1px solid rgba(16,36,63,.18);border-radius:10px;background:var(--tile);font-size:16px">' +
-        '</div>' +
-        '<div class="stack mt"><button class="btn" data-sync="signin">Email me a sign-in link</button></div>' +
-        '<div class="foot" style="text-align:left" id="syncStatus">' + esc(status || "") + '</div>';
-      el.querySelector('[data-sync="signin"]').addEventListener("click", function () {
-        var email = ((el.querySelector("#syncEmail") || {}).value || "").trim();
-        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { setStatus("Enter a valid email address"); return; }
-        setStatus("Sending link…");
-        client.auth.signInWithOtp({
-          email: email,
-          options: { emailRedirectTo: location.origin + location.pathname }
-        }).then(function (res) {
-          setStatus(res.error ? ("Error: " + res.error.message) : "Check your email for the sign-in link.");
-        }).catch(function () { setStatus("Couldn't send the link — try again."); });
-      });
-    }
-  }
-
-  function setStatus(s) {
-    status = s;
-    var e = document.getElementById("syncStatus");
-    if (e) e.textContent = s;
-  }
-
-  function hint(html) {
-    return '<div class="hint" style="font-size:11.5px;color:var(--slate)">' + html + "</div>";
-  }
-  function clock() {
-    var d = new Date();
-    return ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
-  }
-  function esc(s) {
-    return String(s).replace(/[&<>"]/g, function (c) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    if (!client) { el.innerHTML = hint("Accounts aren't switched on in this build yet."); return; }
+    if (!session) { el.innerHTML = hint("You're not signed in."); return; }
+    el.innerHTML =
+      hint("Signed in as <b>" + esc(session.user.email || "your account") + "</b>. Progress syncs to every device you sign in on.") +
+      '<div class="foot" style="text-align:left" id="syncStatus">' + esc(status || "Synced") + '</div>' +
+      '<div class="stack mt">' +
+        '<button class="btn quiet" data-sync="pull">Sync now</button>' +
+        '<button class="btn quiet" style="color:var(--vinho)" data-sync="signout">Sign out</button>' +
+      '</div>';
+    el.querySelector('[data-sync="pull"]').addEventListener("click", function () {
+      if (session) pullQuiet();
     });
+    el.querySelector('[data-sync="signout"]').addEventListener("click", function () {
+      client.auth.signOut();   // SIGNED_OUT → resetLocal + login screen
+    });
+  }
+
+  /* --------------------------- utils -------------------------- */
+
+  function redirectURL() { return location.origin + location.pathname; }
+  function setStatus(s) { status = s; var e = document.getElementById("syncStatus"); if (e) e.textContent = s; }
+  function hint(html) { return '<div class="hint" style="font-size:11.5px;color:var(--slate)">' + html + "</div>"; }
+  function clock() { var d = new Date(); return ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function each(root, sel, ev, fn) { var n = root.querySelectorAll(sel); for (var i = 0; i < n.length; i++) n[i].addEventListener(ev, fn); }
+
+  function injectStyles() {
+    if (document.getElementById("mil-auth-css")) return;
+    var css =
+      ".auth-wrap{min-height:100%;display:flex;align-items:center;justify-content:center;" +
+        "padding:32px 20px;padding-top:calc(env(safe-area-inset-top,0px) + 40px);" +
+        "padding-bottom:calc(env(safe-area-inset-bottom,0px) + 32px)}" +
+      ".auth-card{width:100%;max-width:380px;background:var(--tile);border:1px solid rgba(16,36,63,.10);" +
+        "border-radius:16px;padding:26px 22px 24px;box-shadow:0 12px 44px rgba(16,36,63,.10)}" +
+      ".auth-brand{text-align:center;margin-bottom:18px}" +
+      ".auth-badge{width:54px;height:54px;margin:0 auto 12px}.auth-badge svg{width:100%;height:100%;border-radius:8px}" +
+      ".auth-title{font-family:var(--serif);font-size:25px;color:var(--ink);line-height:1.15}" +
+      ".auth-sub{font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--cobalt-lt);margin-top:6px}" +
+      ".auth-seg{margin-bottom:4px}" +
+      ".auth-card input{width:100%;padding:12px 13px;margin-top:10px;border:1px solid rgba(16,36,63,.18);" +
+        "border-radius:10px;background:var(--plaster);font-size:16px;color:var(--ink);-webkit-appearance:none}" +
+      ".auth-card input:focus{outline:none;border-color:var(--cobalt);background:var(--tile)}" +
+      ".auth-note{font-size:11.5px;color:var(--slate);margin-top:8px}" +
+      ".auth-primary{width:100%;margin-top:16px}" +
+      ".auth-link{display:block;width:100%;text-align:center;margin-top:14px;color:var(--cobalt);" +
+        "font-size:13px;background:none;border:none;cursor:pointer}" +
+      ".auth-status{margin-top:14px;text-align:center;font-size:12.5px;color:var(--slate);min-height:16px;line-height:1.45}" +
+      ".auth-status.err{color:var(--vinho)}.auth-status.ok{color:var(--verde)}";
+    var s = document.createElement("style");
+    s.id = "mil-auth-css";
+    s.textContent = css;
+    document.head.appendChild(s);
   }
 })();
