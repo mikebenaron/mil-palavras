@@ -223,9 +223,9 @@ input{font-family:inherit;font-size:inherit;color:inherit;background:none;border
 .booklist{border-top:2px solid var(--ink);margin-top:18px}
 .brow{display:flex;align-items:baseline;gap:16px;width:100%;padding:15px 0;border-bottom:1px solid var(--rule)}
 .brow .bt{flex:1;min-width:0}
-.brow .bp{font-family:var(--serif);font-size:19px;color:var(--ink);line-height:1.15}
-.brow .be{font-size:11.5px;color:var(--slate-en);margin-top:2px}
-.brow .bs{font-size:11.5px;color:var(--slate);margin-top:2px}
+.brow .bp{display:block;font-family:var(--serif);font-size:19px;color:var(--ink);line-height:1.15}
+.brow .be{display:block;font-size:11.5px;color:var(--slate-en);margin-top:2px}
+.brow .bs{display:block;font-size:11.5px;color:var(--slate);margin-top:2px}
 .brow .tail{font-family:var(--mono);font-size:11px;color:var(--slate);flex:none;align-self:center}
 @media(hover:hover){.brow:hover .bp{color:var(--terracotta)}}
 
@@ -522,7 +522,25 @@ function esc(s){ return String(s).replace(/[&<>"]/g, function(m){ return {"&":"&
 function pad2(n){ n = n|0; return (n < 10 ? "0" : "") + n; }
 function chevL(){ return '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3L5 8l5 5"/></svg>'; }
 /* back link to Home in the book style */
-function backLink(){ return '<button class="backlink" data-nav="home">' + chevL() + 'Início · home</button>'; }
+function backLink(dest, label){
+  return '<button class="backlink" data-nav="' + (dest || "home") + '">' + chevL() + (label || "Início · home") + '</button>';
+}
+function cap1(s){ return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+/* bilingual screen title (PT big, EN under) */
+function screenTitle(pt, en){
+  return '<h1 class="screentitle">' + esc(pt) + (en ? '<span class="en">' + esc(en) + '</span>' : '') + '</h1>';
+}
+function screenIntro(pt, en){
+  return pt ? '<div class="introp">' + esc(pt) + '</div>' + (en ? '<div class="introe">' + esc(en) + '</div>' : '') : '';
+}
+/* one row of a book-style list */
+function bookRow(attr, val, pt, en, sub, tail){
+  return '<button class="brow" ' + attr + '="' + esc(String(val)) + '"><span class="bt">' +
+    '<span class="bp">' + esc(pt) + '</span>' +
+    (en ? '<span class="be">' + esc(en) + '</span>' : '') +
+    (sub ? '<span class="bs">' + esc(sub) + '</span>' : '') +
+    '</span>' + (tail !== "" && tail != null ? '<span class="tail">' + esc(String(tail)) + '</span>' : '') + '</button>';
+}
 
 /* ============================ speech ============================ */
 /* Uses the voice already installed on the device, so it works with no connection.
@@ -1356,10 +1374,7 @@ var DMODE = "choice";
 var DMODE_LABEL = { flash:"Flip", choice:"Choose", type:"Type" };
 
 function drow(key, lab, sub, n){
-  return '<button class="row" data-drill="' + esc(key) + '"><span class="body">' +
-    '<span class="lab">' + esc(lab) + '</span><span class="sub">' + esc(sub) + '</span></span>' +
-    '<span class="tail num">' + n + '</span>' +
-    '<svg class="tail" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#B4BDC8" stroke-width="1.8"><path d="M6 3l5 5-5 5"/></svg></button>';
+  return bookRow("data-drill", key, cap1(lab), "", sub, n);
 }
 function countCards(fn){ return CARDS.filter(fn).length; }
 
@@ -1397,25 +1412,22 @@ function renderDrillPicker(kind){
     return drow(g[0], lab, sub, g[1]);
   }).join("");
 
-  h(backBar("Home") +
-    '<div class="eyebrow">' + (isConj ? "Conjugation" : "Grammar") + ' drill</div>' +
-    '<h1 style="margin-bottom:8px">' + (isConj ? "Pick a tense" : "Pick a topic") + '</h1>' +
-    '<p style="color:var(--slate);font-size:13.5px;margin-bottom:14px">' +
-    (isConj
-      ? "Each card is one verb in one person. Flipping it also shows the full table, the rule behind the form and an example."
-      : "Each card is one cell of a grammar table or one gap to fill, so you are tested on it rather than reading it.") +
-    '</p>' +
-    '<div class="seg" style="margin-bottom:16px">' +
-      '<button class="' + (DMODE === "flash" ? "on" : "") + '" data-dm="flash">Flip</button>' +
-      '<button class="' + (DMODE === "choice" ? "on" : "") + '" data-dm="choice">Choose</button>' +
-      '<button class="' + (DMODE === "type" ? "on" : "") + '" data-dm="type">Type it</button>' +
+  h(backLink() +
+    screenTitle(isConj ? "Conjugações" : "Gramática", isConj ? "conjugations" : "grammar") +
+    screenIntro(
+      isConj ? "Cada cartão é um verbo numa pessoa — com a tabela e a regra ao virar." : "Cada cartão é uma célula da tabela, testada em vez de lida.",
+      isConj ? "Each card is one verb in one person, with the full table and the rule on the flip." : "Each card is one cell of a table — tested, not just read.") +
+    '<div class="seg" style="margin-top:16px">' +
+      '<button class="' + (DMODE === "flash" ? "on" : "") + '" data-dm="flash">Cartões</button>' +
+      '<button class="' + (DMODE === "choice" ? "on" : "") + '" data-dm="choice">Escolha</button>' +
+      '<button class="' + (DMODE === "type" ? "on" : "") + '" data-dm="type">Escrever</button>' +
     '</div>' +
-    '<div class="menu">' +
+    '<div class="booklist">' +
       drow("__all", "Everything", "the whole family, shuffled", countCards(function(c){ return c.c === kind; })) +
       extra + rows +
     '</div>' +
-    '<div class="foot">These sit in the same schedule as the words. Anything you grade here comes back on ' +
-    'its own timetable under <b>Review</b>, so you do not have to remember to come back to this screen.</div>');
+    '<div class="footer" style="margin-top:22px"><div class="fp">Entram no mesmo horário que as palavras.</div>' +
+    '<div class="fe">These sit in the same schedule as the words — anything you grade returns under Review on its own timetable.</div></div>');
 
   on("[data-dm]", "click", function(e){ DMODE = e.currentTarget.getAttribute("data-dm"); renderDrillPicker(kind); });
   on("[data-drill]", "click", function(e){
@@ -1725,29 +1737,21 @@ var MODE_LABEL = {
   type:["Escrever","type it"], gender:["O ou A?","noun gender"]
 };
 function renderDeckPicker(mode){
-  var rows = CLASS_ORDER.map(function(k){
+  var ml = MODE_LABEL[mode] || [MODE_TITLE[mode], ""];
+  var classRows = CLASS_ORDER.map(function(k){
     var n = CARDS.filter(function(c){ return c.c === k; }).length;
-    return '<button class="row" data-deck="' + k + '"><span class="body"><span class="lab">' + esc(CLASS_EN[k]) +
-      '</span><span class="sub">' + esc(CLASS_LABEL[k]) + '</span></span><span class="tail num">' + n + '</span>' +
-      '<svg class="tail" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#B4BDC8" stroke-width="1.8"><path d="M6 3l5 5-5 5"/></svg></button>';
+    return bookRow("data-deck", k, cap1(CLASS_LABEL[k]), CLASS_EN[k], "", n);
   }).join("");
-  h(backBar("Home") +
-    '<div class="eyebrow">' + esc(MODE_TITLE[mode]) + '</div><h1>Pick a set</h1>' +
-    '<div class="menu mt">' +
-      '<button class="row" data-deck="__random"><span class="body"><span class="lab">Random mix</span>' +
-      '<span class="sub">anything at all, in no particular order</span></span><span class="tail num">' + CARDS.length + '</span>' +
-      '<svg class="tail" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#B4BDC8" stroke-width="1.8"><path d="M6 3l5 5-5 5"/></svg></button>' +
-      '<button class="row" data-deck="__started"><span class="body"><span class="lab">Words I\'ve started</span>' +
-      '<span class="sub">everything already in rotation</span></span><span class="tail num">' + Object.keys(S.prog).length + '</span>' +
-      '<svg class="tail" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#B4BDC8" stroke-width="1.8"><path d="M6 3l5 5-5 5"/></svg></button>' +
-      '<button class="row" data-deck="__weak"><span class="body"><span class="lab">Trouble words</span>' +
-      '<span class="sub">the ones you keep missing</span></span><span class="tail num">' +
-      CARDS.filter(function(c){ return (S.prog[c.i]||{}).l >= 3; }).length + '</span>' +
-      '<svg class="tail" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#B4BDC8" stroke-width="1.8"><path d="M6 3l5 5-5 5"/></svg></button>' +
-      '<button class="row" data-deck="__all"><span class="body"><span class="lab">Everything</span>' +
-      '<span class="sub">words, conjugations and grammar</span></span><span class="tail num">' + CARDS.length + '</span>' +
-      '<svg class="tail" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#B4BDC8" stroke-width="1.8"><path d="M6 3l5 5-5 5"/></svg></button>' +
-      rows +
+  var started = Object.keys(S.prog).length;
+  var weak = CARDS.filter(function(c){ return (S.prog[c.i]||{}).l >= 3; }).length;
+  h(backLink() + screenTitle(ml[0], ml[1]) +
+    screenIntro("Escolhe um conjunto para trabalhar.", "Pick a set to work through.") +
+    '<div class="booklist">' +
+      bookRow("data-deck","__random","Mistura aleatória","random mix","tudo, sem ordem · anything, no order", CARDS.length) +
+      bookRow("data-deck","__started","Palavras começadas","words started","já em rotação · already in rotation", started) +
+      bookRow("data-deck","__weak","Palavras difíceis","trouble words","as que falhas · the ones you keep missing", weak) +
+      bookRow("data-deck","__all","Tudo","everything","palavras, verbos e gramática · words, verbs, grammar", CARDS.length) +
+      classRows +
     '</div>');
   bindNav();
   on("[data-deck]", "click", function(e){
@@ -2175,7 +2179,98 @@ function renderBrowse(){
 }
 
 /* ============================ grammar ============================ */
+/* Six grammar topics with bilingual tables, lifted from the design prototype. */
+var TOPICS = {
+  contracoes:{id:"contracoes",title:"Contrações",titleE:"Contractions",n:16,sub:"de + o = do, em + a = na",
+    intro:"As preposições engolem o artigo. Não há maneira de as evitar, por isso vale a pena aprender as que aparecem em todas as frases.",
+    introE:"Prepositions swallow the article. There is no way around them, so learn the ones that turn up in every sentence.",
+    lead:"", cols:["o","a","os","as"],
+    rows:[{label:"de +",cells:["do","da","dos","das"]},{label:"em +",cells:["no","na","nos","nas"]},
+          {label:"a +",cells:["ao","à","aos","às"]},{label:"por +",cells:["pelo","pela","pelos","pelas"]}],
+    note:"Vou ao supermercado, nunca a o supermercado. A contração é obrigatória na fala e na escrita.",
+    noteE:"Vou ao supermercado, never a o supermercado. The contraction is compulsory in speech and in writing."},
+  plurais:{id:"plurais",title:"Plurais",titleE:"Plurals",n:12,sub:"-ão, -al, -m, -s",
+    intro:"Quase todos os plurais seguem uma de cinco regras. Aprende as terminações e deixas de decorar palavra a palavra.",
+    introE:"Almost every plural follows one of five rules. Learn the endings and you stop memorising word by word.",
+    lead:"terminação", cols:["singular","plural"],
+    rows:[{label:"-ão → -ões",cells:["a região","as regiões"]},{label:"-al → -ais",cells:["o animal","os animais"]},
+          {label:"-m → -ns",cells:["o homem","os homens"]},{label:"-s (invariável)",cells:["o lápis","os lápis"]},
+          {label:"-il → -is",cells:["o funil","os funis"]}],
+    note:"O irmão faz os irmãos, mas o pão faz os pães. As três terminações -ões, -ãos e -ães têm de ser ouvidas.",
+    noteE:"O irmão gives os irmãos, but o pão gives os pães. The three endings -ões, -ãos and -ães have to be heard."},
+  serestar:{id:"serestar",title:"Ser e estar",titleE:"Ser and estar",n:18,sub:"o que é permanente, o que passa",
+    intro:"Ser é aquilo que a coisa é; estar é como a coisa está agora. A mesma frase muda de sentido conforme o verbo.",
+    introE:"Ser is what a thing is; estar is how it happens to be right now. The same sentence changes meaning with the verb.",
+    lead:"", cols:["ser","estar"],
+    rows:[{label:"identidade",cells:["sou português","estou em Portugal"]},
+          {label:"qualidade",cells:["ele é calmo","ele está calmo"]},
+          {label:"tempo",cells:["são três horas","está frio"]},
+          {label:"comida",cells:["a sopa é boa","a sopa está fria"]}],
+    note:"Ele é aborrecido = é uma pessoa maçadora. Ele está aborrecido = está chateado hoje.",
+    noteE:"Ele é aborrecido = he is a boring person. Ele está aborrecido = he is fed up today."},
+  pronomes:{id:"pronomes",title:"Pronomes",titleE:"Pronouns",n:14,sub:"eu, tu, você, nós",
+    intro:"O português europeu usa três registos de tratamento. Escolher mal soa estranho antes de soar errado.",
+    introE:"European Portuguese has three registers of address. Choosing the wrong one sounds odd before it sounds wrong.",
+    lead:"pessoa", cols:["sujeito","objeto"],
+    rows:[{label:"1.ª singular",cells:["eu","me"]},{label:"2.ª informal",cells:["tu","te"]},
+          {label:"2.ª formal",cells:["você / o senhor","o, lhe"]},{label:"1.ª plural",cells:["nós","nos"]},
+          {label:"3.ª plural",cells:["eles / elas","os, as"]}],
+    note:"Em Portugal, tu com amigos e família; o senhor / a senhora com desconhecidos mais velhos. Você é raro e pode soar seco.",
+    noteE:"In Portugal, tu with friends and family; o senhor / a senhora with older strangers. Você is rare and can sound curt."},
+  possessivos:{id:"possessivos",title:"Possessivos",titleE:"Possessives",n:10,sub:"o meu, a minha, os meus",
+    intro:"O possessivo concorda com a coisa possuída, não com quem possui — e leva artigo antes.",
+    introE:"The possessive agrees with the thing owned, not the owner — and it takes an article in front.",
+    lead:"", cols:["m. sing.","f. sing.","m. pl.","f. pl."],
+    rows:[{label:"eu",cells:["o meu","a minha","os meus","as minhas"]},
+          {label:"tu",cells:["o teu","a tua","os teus","as tuas"]},
+          {label:"ele / ela",cells:["o seu","a sua","os seus","as suas"]},
+          {label:"nós",cells:["o nosso","a nossa","os nossos","as nossas"]}],
+    note:"O meu carro, a minha casa — o artigo antes do possessivo é normal em Portugal e omite-se no Brasil.",
+    noteE:"O meu carro, a minha casa — the article before the possessive is normal in Portugal and dropped in Brazil."},
+  adjetivos:{id:"adjetivos",title:"Adjetivos",titleE:"Adjectives",n:11,sub:"concordância e posição",
+    intro:"O adjetivo vem depois do nome e concorda com ele em género e número. Antes do nome, muda de sentido.",
+    introE:"The adjective comes after the noun and agrees with it in gender and number. Placed before, it changes meaning.",
+    lead:"", cols:["masculino","feminino"],
+    rows:[{label:"-o / -a",cells:["um carro novo","uma casa nova"]},
+          {label:"-e (invariável)",cells:["um livro grande","uma mesa grande"]},
+          {label:"plural",cells:["carros novos","casas novas"]},
+          {label:"posição",cells:["um homem grande","um grande homem"]}],
+    note:"Um homem grande é alto; um grande homem é admirável. A posição carrega o sentido.",
+    noteE:"Um homem grande is a tall man; um grande homem is an admirable one. Position carries the sense."}
+};
 function renderGrammar(){
+  var rows = Object.keys(TOPICS).map(function(k){
+    var t = TOPICS[k];
+    return bookRow("data-topic", k, t.title, t.titleE, t.sub, t.n);
+  }).join("");
+  h(backLink() + screenTitle("Gramática", "grammar") +
+    screenIntro("As regras que aparecem em cada frase — lê-as, depois testa-as.",
+                "The rules that turn up in every sentence — read them, then be tested.") +
+    '<div class="booklist">' + rows + '</div>');
+  on("[data-topic]","click",function(e){ renderTopic(e.currentTarget.getAttribute("data-topic")); });
+  bindNav();
+}
+function renderTopic(id){
+  var t = TOPICS[id];
+  if (!t) return renderGrammar();
+  var header = '<div class="gthead"><span class="gtlabel">' + esc(t.lead || "") + '</span>' +
+    t.cols.map(function(col){ return '<span class="gtcell">' + esc(col) + '</span>'; }).join("") + '</div>';
+  var body = t.rows.map(function(r){
+    return '<div class="gtrow"><span class="gtlabel">' + esc(r.label) + '</span>' +
+      r.cells.map(function(cell){ return '<span class="gtcell">' + esc(cell) + '</span>'; }).join("") + '</div>';
+  }).join("");
+  var n = grammarDrillPool(id).length;
+  h(backLink("grammar", "Gramática · grammar") +
+    screenTitle(t.title, t.titleE) +
+    screenIntro(t.intro, t.introE) +
+    '<div class="gtable">' + header + body + '</div>' +
+    '<div class="footnote" style="margin-top:20px"><div class="np">' + esc(t.note) + '</div>' +
+      '<div class="ne">' + esc(t.noteE) + '</div></div>' +
+    (n ? '<button class="btn outline block" style="margin-top:20px" data-testtopic="' + esc(id) + '">Testar isto · test this · ' + n + ' cartões</button>' : ''));
+  on("[data-testtopic]","click",function(e){ startDrill(grammarDrillPool(e.currentTarget.getAttribute("data-testtopic"))); });
+  bindNav();
+}
+function renderGrammarOLD(){
   var body = DATA.grammar.map(function(g){
     var tables = g.tables.map(function(t){
       return '<table><thead><tr>' + t.cols.map(function(c){ return '<th>' + c + '</th>'; }).join("") +
