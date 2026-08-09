@@ -1,6 +1,6 @@
 /* Mil Palavras service worker — offline app shell.
    Bump CACHE_VERSION whenever the app files change to force an update. */
-const CACHE_VERSION = 'mil-palavras-v20';
+const CACHE_VERSION = 'mil-palavras-v21';
 const APP_SHELL = [
   './',
   './index.html',
@@ -47,12 +47,20 @@ self.addEventListener('fetch', (event) => {
   const isNavigation = req.mode === 'navigate' ||
     (req.headers.get('accept') || '').includes('text/html');
 
+  // Only ever cache a response that actually succeeded. Caching a 404 or a 500
+  // would serve that failure forever — a transient error while fetching
+  // readings.js could otherwise brick the app until the next version bump.
+  const cacheable = (res) => res && res.ok && res.status === 200 &&
+    (res.type === 'basic' || res.type === 'cors');
+
   if (isNavigation) {
     event.respondWith(
       fetch(req)
         .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE_VERSION).then((cache) => cache.put('./index.html', copy));
+          if (cacheable(res)) {
+            const copy = res.clone();
+            caches.open(CACHE_VERSION).then((cache) => cache.put('./index.html', copy));
+          }
           return res;
         })
         .catch(() => caches.match('./index.html').then((r) => r || caches.match('./')))
@@ -62,8 +70,10 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith(
     caches.match(req).then((cached) => cached || fetch(req).then((res) => {
-      const copy = res.clone();
-      caches.open(CACHE_VERSION).then((cache) => cache.put(req, copy));
+      if (cacheable(res)) {
+        const copy = res.clone();
+        caches.open(CACHE_VERSION).then((cache) => cache.put(req, copy));
+      }
       return res;
     }))
   );
