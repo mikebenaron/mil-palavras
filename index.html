@@ -399,7 +399,7 @@ function freshState(){
     set:{ perDay:15, dir:"pt", tips:true, audio:true, rate:"steady", classes:classes }
   };
 }
-function save(){ Store.save(S); }
+function save(){ S._updatedAt = Date.now(); Store.save(S); if (window.MilSync) window.MilSync.push(S); }
 
 function dayNo(ts){ var d = ts ? new Date(ts) : new Date(); d.setHours(0,0,0,0); return Math.round(d.getTime()/86400000); }
 
@@ -1525,7 +1525,7 @@ function renderHome(){
     'and it opens like an app — on a plane, on the Tube, anywhere.<br><br>' +
     'Vocabulary from <em>1000 Most Common Portuguese Words</em> by Leonardo Coelho, ' +
     'portuguesewithleo.com — kept here as a personal study copy. European Portuguese throughout. ' +
-    'Nothing leaves this device.</div>'
+    'Your progress stays on this device unless you sign in to sync it privately to your own account.</div>'
   );
 
   bindSay();
@@ -2099,6 +2099,9 @@ function renderSettings(){
     '<div class="hint" style="font-size:11.5px;color:var(--slate);margin-bottom:6px">Turn a class off and nothing new from it will be introduced. Anything already in rotation keeps coming back. <em>Verb conjugation</em> and <em>Grammar drills</em> are generated sets — switch them off here if you would rather keep Review to vocabulary only.</div>' +
     '<div class="menu">' + toggles + '</div>' +
 
+    '<h3>Sync across devices</h3>' +
+    '<div id="syncMount"></div>' +
+
     '<h3>Progress</h3>' +
     '<div class="hint" style="font-size:11.5px;color:var(--slate)">' + esc(storeNote) + '</div>' +
     '<div class="stack mt">' +
@@ -2161,6 +2164,7 @@ function renderSettings(){
     }
   });
   bindNav();
+  if (window.MilSync) window.MilSync.mount();
 }
 
 /* ============================ keyboard ============================ */
@@ -2189,13 +2193,36 @@ Store.init().then(function(saved){
   CLASS_ORDER.forEach(function(k){ if (S.set.classes[k] === undefined) S.set.classes[k] = true; });
   rollDay();
   renderHome();
+  attachSync();
 }).catch(function(){
   S = freshState();
   renderHome();
+  attachSync();
 });
+
+/* Hand the sync layer a small bridge to the app's private state. */
+function attachSync(){
+  if (!window.MilSync) return;
+  window.MilSync.attach({
+    get: function(){ return S; },
+    set: function(ns){
+      S = ns;
+      if (!S.set) S.set = freshState().set;
+      CLASS_ORDER.forEach(function(k){ if (S.set.classes[k] === undefined) S.set.classes[k] = true; });
+    },
+    persist: function(){ Store.save(S); },   // raw save: no timestamp bump, no re-push
+    save: save,
+    render: function(){ renderHome(); },
+    freshState: freshState
+  });
+}
 
 })();
 </script>
+<!-- Cross-device sync (loads before boot's async attach resolves) -->
+<script src="vendor/supabase.js"></script>
+<script src="sync-config.js"></script>
+<script src="sync.js"></script>
 <script>
 /* Register the service worker so the app works offline and is installable. */
 if ("serviceWorker" in navigator) {
