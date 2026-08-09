@@ -337,6 +337,11 @@ input{font-family:inherit;font-size:inherit;color:inherit;background:none;border
 .wbchip{font-family:var(--serif);font-size:16px;color:var(--ink);padding:8px 14px;background:var(--card);box-shadow:inset 0 0 0 1px var(--rule-3)}
 .wbchip.used{opacity:.32;text-decoration:line-through}
 @media(hover:hover){.wbchip:not(.used):hover{box-shadow:inset 0 0 0 1.5px var(--terracotta);color:var(--terracotta)}}
+.srcline{margin-top:26px;padding-top:14px;border-top:1px solid var(--rule);font-size:11px;color:var(--slate-en);line-height:1.6}
+.srcline a{color:var(--terracotta)}
+.srcline .lvl{display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--paper);
+  background:var(--teal);padding:2px 7px;margin-right:8px;vertical-align:middle}
+.brow .lvlbadge{font-family:var(--mono);font-size:9.5px;color:var(--paper);background:var(--teal);padding:2px 6px;margin-left:8px;letter-spacing:.06em}
 
 /* ---------- toast ---------- */
 .toast{position:fixed;left:50%;bottom:calc(var(--safe-b) + 26px);transform:translateX(-50%);
@@ -2520,7 +2525,25 @@ function renderMethod(){
 /* Short graded passages built from common words: comprehensible input, with
    parallel-text reveal and cloze (fill-the-gaps) practice. */
 var READINGS = [
-  { id:"lisboa", title:"Uma manhã em Lisboa", titleE:"A morning in Lisbon", level:"A1",
+  { id:"reggae", title:"Um novo festival em Oeiras", titleE:"A new festival in Oeiras", level:"A2",
+    src:"Resumo de notícia · RTP Notícias (2026)", srcUrl:"https://www.rtp.pt/noticias/cultura/ha-um-novo-festival-em-oeiras-o-reggae-sun-fest_v1758521", pt_note:true,
+    lines:[
+      {pt:"Há um novo festival de música em Oeiras, perto de Lisboa.", en:"There's a new music festival in Oeiras, near Lisbon."},
+      {pt:"Chama-se Reggae Sun Fest e traz música reggae das Caraíbas.", en:"It's called Reggae Sun Fest and brings reggae music from the Caribbean."},
+      {pt:"É mais um evento cultural para o verão na região de Lisboa.", en:"It's another cultural event for summer in the Lisbon region."},
+      {pt:"Os moradores e os visitantes podem ouvir concertos ao vivo.", en:"Residents and visitors can listen to live concerts."}
+    ],
+    gaps:["festival","música","verão","concertos"] },
+  { id:"raposa", title:"A raposa e as uvas", titleE:"The fox and the grapes", level:"A2",
+    src:"Adaptado de uma fábula de Esopo · domínio público", pt_note:true,
+    lines:[
+      {pt:"Uma raposa com fome viu uns cachos de uvas numa videira alta.", en:"A hungry fox saw some bunches of grapes on a high vine."},
+      {pt:"Saltou muitas vezes, mas não conseguiu chegar às uvas.", en:"It jumped many times, but couldn't reach the grapes."},
+      {pt:"Cansada, foi-se embora e disse: «Não estão maduras.»", en:"Tired, it went away and said: 'They're not ripe.'"},
+      {pt:"É fácil desprezar aquilo que não podemos ter.", en:"It's easy to scorn what we cannot have."}
+    ],
+    gaps:["raposa","uvas","maduras","ter"] },
+  { id:"lisboa", title:"Uma manhã em Lisboa", titleE:"A morning in Lisbon", level:"A1", src:"Texto original · Mil Palavras", pt_note:true,
     lines:[
       {pt:"Bom dia! Hoje é sábado e estou em Lisboa.", en:"Good morning! Today is Saturday and I'm in Lisbon."},
       {pt:"De manhã, tomo um café e leio o jornal.", en:"In the morning, I have a coffee and read the newspaper."},
@@ -2529,7 +2552,7 @@ var READINGS = [
       {pt:"À noite, comemos peixe num restaurante perto de casa.", en:"At night, we eat fish at a restaurant near home."}
     ],
     gaps:["sábado","café","cidade","família","casa"] },
-  { id:"familia", title:"A minha família", titleE:"My family", level:"A1",
+  { id:"familia", title:"A minha família", titleE:"My family", level:"A1", src:"Texto original · Mil Palavras", pt_note:true,
     lines:[
       {pt:"A minha família é pequena.", en:"My family is small."},
       {pt:"O meu pai chama-se António e a minha mãe chama-se Maria.", en:"My father is called António and my mother is called Maria."},
@@ -2538,7 +2561,7 @@ var READINGS = [
       {pt:"Gosto muito de estar com eles.", en:"I really like being with them."}
     ],
     gaps:["família","pai","mãe","irmão","avós"] },
-  { id:"cafe", title:"No café", titleE:"At the café", level:"A2",
+  { id:"cafe", title:"No café", titleE:"At the café", level:"A2", src:"Texto original · Mil Palavras", pt_note:true,
     lines:[
       {pt:"— Bom dia. Um café e um pastel de nata, por favor.", en:"— Good morning. A coffee and a custard tart, please."},
       {pt:"— São dois euros e meio.", en:"— That's two euros fifty."},
@@ -2553,7 +2576,7 @@ var readGap = null;         // last-focused cloze input, for the accent bar
 
 function renderReadingPicker(){
   var rows = READINGS.map(function(r){
-    return bookRow("data-reading", r.id, r.title, r.titleE, r.level + " · " + r.lines.length + " frases", "");
+    return bookRow("data-reading", r.id, r.title, r.titleE, (r.src || "texto original") + " · " + r.lines.length + " frases", r.level);
   }).join("");
   renderPage("leitura",
     screenTitle("Leitura", "reading") +
@@ -2615,7 +2638,12 @@ function renderReading(id){
       '<div id="clozeres"></div>';
   }
 
-  renderPage("leitura", screenTitle(r.title, r.titleE) + seg + body,
+  var srcLbl = r.src || "Texto original · Mil Palavras";
+  var srcLine = '<div class="srcline"><span class="lvl">' + esc(r.level) + '</span>' +
+    'Fonte · source: ' + (r.srcUrl ? '<a href="' + esc(r.srcUrl) + '" target="_blank" rel="noopener noreferrer">' + esc(srcLbl) + '</a>' : esc(srcLbl)) +
+    (r.pt_note ? ' · <span class="ptmark">português europeu</span>' : '') + '</div>';
+
+  renderPage("leitura", screenTitle(r.title, r.titleE) + seg + body + srcLine,
     function(){ renderReading(id); }, "leitura", "Leitura · reading");
 
   on("[data-rm]","click",function(e){ READMODE = e.currentTarget.getAttribute("data-rm"); renderReading(id); });
