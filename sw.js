@@ -1,6 +1,6 @@
 /* Mil Palavras service worker — offline app shell.
    Bump CACHE_VERSION whenever the app files change to force an update. */
-const CACHE_VERSION = 'mil-palavras-v26';
+const CACHE_VERSION = 'mil-palavras-v27';
 /* Audio lives in its own cache, deliberately NOT tied to CACHE_VERSION.
    The clips never change, they are ~82MB, and a user may have chosen to
    download all of them — wiping that on every app update (a CSS tweak!)

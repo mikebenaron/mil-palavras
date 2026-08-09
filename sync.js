@@ -49,7 +49,14 @@
     gate: gate,
     push: function (state) { if (client && session && !applying) schedulePush(state); },
     mount: renderAccountPanel,
-    isConfigured: function () { return configured; }
+    isConfigured: function () { return configured; },
+    signedIn: function () { return !!session; },
+    // Used by pronunciation assessment to mint a short-lived Azure token.
+    invoke: function (name, body) {
+      if (!client) return Promise.reject(new Error("not configured"));
+      if (!session) return Promise.reject(new Error("not signed in"));
+      return client.functions.invoke(name, body ? { body: body } : {});
+    }
   };
 
   /* --------------------------- gate --------------------------- */

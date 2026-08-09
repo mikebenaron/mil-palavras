@@ -333,6 +333,27 @@ input{font-family:inherit;font-size:inherit;color:inherit;background:none;border
 [data-listen] .lbl-stop{display:none}
 [data-listen].on .lbl-stop{display:inline}
 [data-listen].on .lbl-play{display:none}
+/* speaking: record control and the score readout */
+.bigrec{width:96px;height:96px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  margin:22px auto 0;color:var(--paper);background:var(--vinho)}
+.bigrec:active{opacity:.75}
+.bigrec.on{animation:recpulse 1.1s ease-in-out infinite}
+@keyframes recpulse{0%,100%{opacity:1}50%{opacity:.55}}
+@media(prefers-reduced-motion:reduce){.bigrec.on{animation:none;opacity:.7}}
+.scorewrap{margin-top:18px}
+.scoren{font-family:var(--serif);font-size:64px;line-height:1;text-align:center;color:var(--teal)}
+.scoren.near{color:var(--ochre)}
+.scoren.no{color:var(--vinho)}
+.scorewords{font-family:var(--serif);font-size:22px;text-align:center;margin-top:16px;line-height:1.6}
+.sw{padding:1px 3px}
+.sw.good{box-shadow:inset 0 -3px 0 var(--teal)}
+.sw.mid{box-shadow:inset 0 -3px 0 var(--ochre)}
+.sw.bad{box-shadow:inset 0 -3px 0 var(--vinho);color:var(--vinho)}
+.scorebars{margin-top:20px;display:flex;flex-direction:column;gap:10px}
+.sbl{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--slate);display:flex;gap:6px}
+.sbl b{margin-left:auto;color:var(--ink);font-family:var(--mono)}
+.sbt{height:5px;background:var(--rule-3);margin-top:5px;overflow:hidden}
+.sbt span{display:block;height:100%;background:var(--teal)}
 /* dictation: the sound is the prompt, so the play control is the focal point */
 .bigplay{width:96px;height:96px;border-radius:50%;display:flex;align-items:center;justify-content:center;
   margin:18px auto 0;color:var(--paper);background:var(--ink)}
@@ -847,6 +868,88 @@ var Recorded = (function(){
       return b ? " — about " + Math.round(b / 1048576) + " MB" : "";
     }
   };
+})();
+
+/* Pronunciation assessment — say a word, hear how close you were.
+   The Azure key never reaches the browser: a Supabase Edge Function mints a
+   10-minute authorization token, and the SDK (454KB) is fetched only when you
+   first use the feature rather than loaded on every visit. */
+var Pronounce = (function(){
+  var sdkLoading = null, tok = null, tokAt = 0;
+
+  function available(){
+    return !!(window.MilSync && window.MilSync.signedIn && window.MilSync.signedIn() &&
+      navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  }
+
+  function loadSDK(){
+    if (window.SpeechSDK) return Promise.resolve(window.SpeechSDK);
+    if (sdkLoading) return sdkLoading;
+    sdkLoading = new Promise(function(res, rej){
+      var s = document.createElement("script");
+      s.src = "vendor/speech-sdk.js";
+      s.onload = function(){ window.SpeechSDK ? res(window.SpeechSDK) : rej(new Error("SDK did not initialise")); };
+      s.onerror = function(){ sdkLoading = null; rej(new Error("Could not load the speech engine")); };
+      document.head.appendChild(s);
+    });
+    return sdkLoading;
+  }
+
+  /* Tokens last 10 minutes; re-use within 9 to avoid a round trip per attempt. */
+  function token(){
+    if (tok && Date.now() - tokAt < 540000) return Promise.resolve(tok);
+    return window.MilSync.invoke("speech-token").then(function(r){
+      if (r.error) throw new Error(r.error.message || "token request failed");
+      var d = r.data;
+      if (!d || !d.token) throw new Error(d && d.error ? d.error : "no token returned");
+      tok = d; tokAt = Date.now();
+      return tok;
+    });
+  }
+
+  /* Resolves with the assessment, or rejects with something worth showing. */
+  function assess(reference){
+    return Promise.all([loadSDK(), token()]).then(function(r){
+      var SDK = r[0], t = r[1];
+      var cfg = SDK.SpeechConfig.fromAuthorizationToken(t.token, t.region);
+      cfg.speechRecognitionLanguage = "pt-PT";
+      var pa = new SDK.PronunciationAssessmentConfig(
+        reference,
+        SDK.PronunciationAssessmentGradingSystem.HundredMark,
+        SDK.PronunciationAssessmentGranularity.Phoneme,
+        true                                  // enable miscue: catches skipped words
+      );
+      var audio = SDK.AudioConfig.fromDefaultMicrophoneInput();
+      var rec = new SDK.SpeechRecognizer(cfg, audio);
+
+      return new Promise(function(resolve, reject){
+        pa.applyTo(rec);
+        var settled = false;
+        function done(fn, arg){ if (settled) return; settled = true; try { rec.close(); } catch(e){} fn(arg); }
+
+        rec.recognizeOnceAsync(function(result){
+          if (!result || result.reason === SDK.ResultReason.NoMatch) {
+            return done(reject, new Error("Não te ouvi · didn't catch that"));
+          }
+          try {
+            var pr = SDK.PronunciationAssessmentResult.fromResult(result);
+            done(resolve, {
+              text: result.text || "",
+              accuracy: pr.accuracyScore,
+              fluency: pr.fluencyScore,
+              completeness: pr.completenessScore,
+              overall: pr.pronunciationScore,
+              words: (pr.detailResult && pr.detailResult.Words) || []
+            });
+          } catch(e){ done(reject, new Error("Não consegui avaliar · couldn't score that")); }
+        }, function(err){
+          done(reject, new Error(String(err || "recognition failed")));
+        });
+      });
+    });
+  }
+
+  return { available: available, assess: assess, warm: loadSDK };
 })();
 
 /* Bulk download of the recorded audio, so the app is genuinely usable with no
@@ -2080,6 +2183,7 @@ function renderHomePhone(){
     {n:"03",p:"Escolha",e:"multiple choice",nav:"choice",tail:""},
     {n:"04",p:"Escrever",e:"type it",nav:"type",tail:""},
     {p:"Ditado",e:"dictation",nav:"listen",tail:""},
+    {p:"Falar",e:"speaking",nav:"speak",tail:""},
     {n:"05",p:"O ou A?",e:"noun gender",nav:"gender",tail:String(nouns)},
     {n:"06",p:"Conjugações",e:"conjugations",nav:"conj",tail:String(conj)},
     {n:"07",p:"Dicionário",e:"dictionary",nav:"browse",tail:String(CARDS.length)},
@@ -2158,7 +2262,7 @@ function railItems(active){
   if (nTrouble) nav.push({k:"trouble",p:"Difíceis",e:"Trouble words · " + nTrouble});
   nav = nav.concat([
     {k:"flash",p:"Cartões",e:"Flashcards"},{k:"choice",p:"Escolha",e:"Multiple choice"},
-    {k:"type",p:"Escrever",e:"Type it"},{k:"listen",p:"Ditado",e:"Dictation"},
+    {k:"type",p:"Escrever",e:"Type it"},{k:"listen",p:"Ditado",e:"Dictation"},{k:"speak",p:"Falar",e:"Speaking"},
     {k:"gender",p:"O ou A?",e:"Noun gender"},
     {k:"conj",p:"Conjugações",e:"Conjugations"},{k:"browse",p:"Dicionário",e:"Dictionary"},
     {k:"grammar",p:"Gramática",e:"Grammar"},{k:"leitura",p:"Leitura",e:"Reading"},
@@ -2308,6 +2412,7 @@ function go(n){
   if (n === "choice") return renderDeckPicker("choice");
   if (n === "type") return renderDeckPicker("type");
   if (n === "listen") return renderDeckPicker("listen");
+  if (n === "speak") return renderSpeakGate();
   if (n === "gender") return startSession("gender", genderPool());
   if (n === "conj") return renderDrillPicker("conjugacao");
   if (n === "gdrill") return renderDrillPicker("gramatica");
@@ -2318,11 +2423,26 @@ function go(n){
 }
 
 /* ============================ deck picker ============================ */
-var MODE_TITLE = { flash:"Flashcards", choice:"Multiple choice", type:"Type it", gender:"o or a?", review:"Review", listen:"Dictation" };
+var MODE_TITLE = { flash:"Flashcards", choice:"Multiple choice", type:"Type it", gender:"o or a?", review:"Review", listen:"Dictation", speak:"Speaking" };
 var MODE_LABEL = {
   review:["Rever","review"], flash:["Cartões","flashcards"], choice:["Escolha","multiple choice"],
-  type:["Escrever","type it"], gender:["O ou A?","noun gender"], listen:["Ditado","dictation"]
+  type:["Escrever","type it"], gender:["O ou A?","noun gender"], listen:["Ditado","dictation"], speak:["Falar","speaking"]
 };
+/* Speaking needs a microphone and a signed-in account (the assessment token is
+   minted per user). Say so plainly rather than failing at the record button. */
+function renderSpeakGate(){
+  if (Pronounce.available()) return renderDeckPicker("speak");
+  var why = (window.MilSync && window.MilSync.signedIn && window.MilSync.signedIn())
+    ? "Este aparelho não dá acesso ao microfone. · This device or browser isn't giving access to a microphone."
+    : "Precisas de iniciar sessão — a avaliação corre na tua conta. · You need to be signed in: the assessment runs under your account.";
+  renderPage("speak", screenTitle("Falar", "speaking") +
+    screenIntro("Diz a palavra e ouve o que acertaste.", "Say the word and see how close you got.") +
+    '<div class="explain" style="margin-top:18px"><div class="ne">' + esc(why) + '</div></div>' +
+    '<button class="btn outline block" style="margin-top:18px" data-nav="settings">Definições · settings</button>',
+    renderSpeakGate);
+  bindNav();
+}
+
 function renderDeckPicker(mode){
   var ml = MODE_LABEL[mode] || [MODE_TITLE[mode], ""];
   var classRows = CLASS_ORDER.map(function(k){
@@ -2350,7 +2470,7 @@ function renderDeckPicker(mode){
     else pool = CARDS.filter(function(c){ return c.c === d; });
     // Dictation is only possible where a recording exists — never ask someone
     // to write down what the device voice guessed at.
-    if (mode === "listen") pool = pool.filter(function(c){ return !!Recorded.srcFor(c.p); });
+    if (mode === "listen" || mode === "speak") pool = pool.filter(function(c){ return !!Recorded.srcFor(c.p); });
     /* every other set keeps frequency order in flip mode; the random mix
        shuffles first, so it draws from the whole deck rather than the top of it */
     if (rnd) pool = shuffle(pool.slice()).slice(0, mode === "flash" ? 40 : 25);
@@ -2411,10 +2531,11 @@ function renderEmpty(){
 /* ============================ session runner ============================ */
 var SES = null;
 function startSession(mode, queue){
-  SES = { mode:mode, q:queue.slice(), i:0, total:queue.length, right:0, wrong:0, shown:false, answered:false, done:0 };
+  SES = { mode:mode, q:queue.slice(), i:0, total:queue.length, right:0, wrong:0, shown:false, answered:false, done:0, score:null };
   renderSession();
 }
 function sessionDir(c){
+  if (SES.mode === "speak") return "pt";
   if (SES.mode === "type" || SES.mode === "listen") return "en";
   if (SES.mode === "gender") return "pt";
   if (c && c.k) return "en";        /* a drill always runs prompt → answer */
@@ -2436,6 +2557,7 @@ function renderSession(){
     '<div class="track"><span style="width:' + pct + '%"></span></div>';
 
   if (SES.mode === "choice") return renderChoice(head, c);
+  if (SES.mode === "speak") return renderSpeak(head, c);
   if (SES.mode === "type" || SES.mode === "listen") return renderType(head, c);
   if (SES.mode === "gender") return renderGender(head, c);
   return renderFlip(head, c);
@@ -2613,6 +2735,96 @@ function nextQ(){ SES.opts = null; SES.answered = false; SES.chosen = null; SES.
 
 /* ---- type it ---- */
 var ACCENTS = ["á","à","â","ã","ç","é","ê","í","ó","ô","õ","ú"];
+/* ---- speak (pronunciation assessment) ---- */
+function renderSpeak(head, c){
+  var r = SES.score;
+  var pt = variants(c.p)[0];
+  h(head +
+    '<div class="cardface" style="padding:12px 4px 6px">' +
+      '<div class="klass">diz em voz alta · say it out loud</div>' +
+      '<div class="word" lang="pt-PT">' + esc(pt) + '</div>' +
+      '<div class="ne" style="margin-top:6px">' + esc(c.e) + '</div>' +
+      '<button class="btn quiet" style="margin-top:10px" data-say="' + esc(c.p) + '">Ouvir o modelo · hear it first</button>' +
+    '</div>' +
+    (r ? scoreBlock(r) :
+      '<button class="bigrec" data-rec="1" aria-label="Record">' +
+        '<svg width="34" height="34" viewBox="0 0 20 20" fill="currentColor">' +
+        '<rect x="7" y="2.5" width="6" height="10" rx="3"/>' +
+        '<path d="M4.5 9.5a5.5 5.5 0 0011 0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>' +
+        '<path d="M10 15v2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>' +
+      '</button>' +
+      '<div class="pcap" id="recCap" style="text-align:center;margin-top:10px">toca e diz a palavra · tap, then say it</div>') +
+    (r ? '<button class="btn outline block" style="margin-top:12px" data-again="1">Tentar outra vez · try again</button>' +
+         '<button class="btn fill block" style="margin-top:10px" data-next="1">Seguinte · next</button>' : ""));
+
+  bindSay(); bindEnd();
+  on("[data-again]","click",function(){ SES.score = null; renderSession(); });
+  on("[data-next]","click",function(){ SES.score = null; nextQ(); });
+  on("[data-rec]","click",function(e){
+    var btn = e.currentTarget, cap = document.getElementById("recCap");
+    btn.classList.add("on");
+    cap.textContent = "A ouvir… fala agora · listening, speak now";
+    Pronounce.assess(pt).then(function(res){
+      SES.score = res;
+      // Practice still counts toward the session tally; 70+ reads as a pass.
+      if (res.overall >= 70) SES.right++; else SES.wrong++;
+      SES.done++; markStudied(); save();
+      renderSession();
+    }).catch(function(err){
+      btn.classList.remove("on");
+      cap.textContent = speakError(err);
+    });
+  });
+}
+
+/* The predictable failures deserve an answer, not a stack trace. */
+function speakError(err){
+  var m = String((err && err.message) || err || "");
+  if (/not found|404|non-2xx|FunctionsHttpError/i.test(m))
+    return "A avaliação ainda não está ligada neste servidor. · Assessment isn't switched on yet (the speech-token function needs deploying).";
+  if (/not signed in|401/i.test(m))
+    return "Sessão expirada — inicia sessão outra vez. · Session expired, please sign in again.";
+  if (/permission|NotAllowed|denied/i.test(m))
+    return "Sem acesso ao microfone. · No microphone access — allow it in your browser settings.";
+  if (/NotFound|no microphone|NotReadable/i.test(m))
+    return "Não encontrei um microfone. · Couldn't find a microphone.";
+  if (/didn't catch|NoMatch/i.test(m)) return "Não te ouvi — tenta outra vez. · Didn't catch that, try again.";
+  return m || "Algo correu mal · something went wrong";
+}
+function scoreBand(n){
+  if (n >= 85) return { k:"ok", pt:"Muito bem", en:"excellent" };
+  if (n >= 70) return { k:"ok", pt:"Bem", en:"good" };
+  if (n >= 55) return { k:"near", pt:"Quase", en:"close" };
+  return { k:"no", pt:"Outra vez", en:"try again" };
+}
+function scoreBlock(r){
+  var band = scoreBand(r.overall || 0);
+  // Per-word colouring is the useful part: it says *where* it went wrong.
+  var words = (r.words || []).map(function(w){
+    var s = (w.PronunciationAssessment && w.PronunciationAssessment.AccuracyScore);
+    if (typeof s !== "number") return '<span class="sw">' + esc(w.Word || "") + '</span>';
+    var cls = s >= 80 ? "good" : (s >= 60 ? "mid" : "bad");
+    return '<span class="sw ' + cls + '" title="' + Math.round(s) + '">' + esc(w.Word || "") + '</span>';
+  }).join(" ");
+  return '<div class="scorewrap">' +
+    '<div class="scoren ' + band.k + '">' + Math.round(r.overall || 0) + '</div>' +
+    '<div class="eyebrow ' + (band.k === "no" ? "" : "teal") + '" style="text-align:center">' +
+      esc(band.pt) + ' · ' + esc(band.en) + '</div>' +
+    (words ? '<div class="scorewords" lang="pt-PT">' + words + '</div>' : '') +
+    '<div class="scorebars">' +
+      scoreBar("Precisão", "accuracy", r.accuracy) +
+      scoreBar("Fluência", "fluency", r.fluency) +
+      scoreBar("Completo", "completeness", r.completeness) +
+    '</div>' +
+    (r.text ? '<div class="pcap" style="margin-top:12px">Ouvi · heard: “' + esc(r.text) + '”</div>' : '') +
+  '</div>';
+}
+function scoreBar(pt, en, n){
+  var v = Math.max(0, Math.min(100, Math.round(n || 0)));
+  return '<div class="sbar"><div class="sbl">' + esc(pt) + ' <span lang="en">' + esc(en) + '</span>' +
+    '<b>' + v + '</b></div><div class="sbt"><span style="width:' + v + '%"></span></div></div>';
+}
+
 function renderType(head, c){
   var listening = SES.mode === "listen";
   var accents = ACCENTS.map(function(a){ return '<button class="akey" data-acc="' + a + '">' + a + '</button>'; }).join("") +
@@ -3030,7 +3242,7 @@ function escapeRe(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
 /* Shown in Definições — bump with CACHE_VERSION in sw.js so a device can be
    checked against the deployed build. */
-var APP_BUILD = "v26";
+var APP_BUILD = "v27";
 
 /* ---- tap-a-word info: contractions, verb infinitives, word meanings ---- */
 var CONTRACTIONS = {
@@ -3302,7 +3514,7 @@ function renderReading(id){
 /* ============================ settings ============================ */
 /* ============================ legal ============================ */
 var CONTACT_EMAIL = "ola@milpalavras.app";
-var LEGAL_UPDATED = "9 de agosto de 2026";
+var LEGAL_UPDATED = "9 de agosto de 2026";   // bump whenever the notices change
 
 function renderPrivacy(){
   var m = '<a href="mailto:' + CONTACT_EMAIL + '">' + CONTACT_EMAIL + '</a>';
@@ -3319,6 +3531,10 @@ function renderPrivacy(){
     '</ul>' +
     '<p>É tudo. Não há mais nada.</p>' +
     '<p class="en">That is the complete list. Nothing else is collected.</p>' +
+
+    '<h2>Falar · the speaking exercise</h2>' +
+    '<p>Só o exercício <em>Falar</em> usa o microfone. Quando tocas para gravar, o que dizes é enviado ao serviço de fala da Microsoft (Azure) para ser avaliado, e a pontuação volta para aqui. Não guardamos a gravação: nem no aparelho, nem na tua conta. Se nunca usares o <em>Falar</em>, o microfone nunca é ligado.</p>' +
+    '<p class="en">The <em>Falar</em> exercise is the only part that uses your microphone. When you tap to record, what you say is sent to Microsoft\'s Azure speech service to be scored, and only the score comes back. We do not keep the recording — not on your device, not in your account. If you never use <em>Falar</em>, the microphone is never switched on.</p>' +
 
     '<h2>Onde fica · where it lives</h2>' +
     '<p>No teu aparelho, e — se iniciares sessão — numa base de dados alojada pelo Supabase, para sincronizar entre aparelhos.</p>' +
