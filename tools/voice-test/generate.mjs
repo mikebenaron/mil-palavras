@@ -47,13 +47,25 @@ const KEYS = {
 /* ------------------------------------------------------------------ *
  * Azure — the only provider with contractually locale-tagged pt-PT.
  * ------------------------------------------------------------------ */
-const AZURE_VOICES = ["pt-PT-RaquelNeural", "pt-PT-DuarteNeural"];
+/* "name@rate" — rate is an SSML prosody percentage, so Duarte (naturally ~17%
+   faster than Raquel, mostly by shortening the gaps between words) can be
+   slowed to match. Override with AZURE_VOICES="pt-PT-DuarteNeural@-15,...". */
+const AZURE_VOICES = (process.env.AZURE_VOICES ||
+  "pt-PT-RaquelNeural@0,pt-PT-DuarteNeural@0").split(",").map((s) => s.trim()).filter(Boolean);
 
-async function azureSpeak(voice, text) {
+function parseVoice(spec) {
+  const [name, rate] = spec.split("@");
+  return { name, rate: Number(rate || 0) };
+}
+
+async function azureSpeak(voice, rate, text) {
   const url = `https://${KEYS.azureRegion}.tts.speech.microsoft.com/cognitiveservices/v1`;
+  const body = rate
+    ? `<prosody rate='${rate > 0 ? "+" : ""}${rate}%'>${escapeXml(text)}</prosody>`
+    : escapeXml(text);
   const ssml =
     `<speak version='1.0' xml:lang='pt-PT'><voice xml:lang='pt-PT' name='${voice}'>` +
-    escapeXml(text) +
+    body +
     `</voice></speak>`;
   const res = await fetchRetry(url, {
     method: "POST",
@@ -187,7 +199,11 @@ console.log(`${PHRASES.length} phrases\n`);
 
 if (KEYS.azure && KEYS.azureRegion) {
   console.log("Azure (pt-PT neural)");
-  for (const v of AZURE_VOICES) done.push(await run(`azure__${v}`, (t) => azureSpeak(v, t)));
+  for (const spec of AZURE_VOICES) {
+    const { name, rate } = parseVoice(spec);
+    const label = `azure__${name}${rate ? (rate > 0 ? "+" : "") + rate : ""}`;
+    done.push(await run(label, (t) => azureSpeak(name, rate, t)));
+  }
 } else {
   console.log("Azure: skipped (set AZURE_SPEECH_KEY and AZURE_SPEECH_REGION)");
 }
@@ -228,12 +244,19 @@ if (!LIST_ONLY) {
     console.log("\nNothing generated — no provider keys were set. See the README in this folder.");
     process.exit(0);
   }
-  // The comparison page is static and can't list directories — hand it a manifest.
+  // The comparison page is static and can't list directories — hand it a
+  // manifest. List every voice present in out/, not just this run's, so
+  // generating a new variant doesn't drop the ones already there.
   await fs.mkdir(OUT, { recursive: true });
+  const all = (await fs.readdir(OUT, { withFileTypes: true }))
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort();
   await fs.writeFile(
     path.join(OUT, "manifest.json"),
-    JSON.stringify({ voices: done.map((d) => d.label), phrases: PHRASES }, null, 2)
+    JSON.stringify({ voices: all, phrases: PHRASES }, null, 2)
   );
+  console.log(`manifest lists ${all.length} voice(s): ${all.join(", ")}`);
   console.log(`\n${done.length} voice(s) generated into tools/voice-test/out/`);
   console.log("Now open:  http://localhost:8765/tools/voice-test/compare.html");
 }
