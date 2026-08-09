@@ -18,9 +18,13 @@ Live at **https://milpalavras.app** (GitHub Pages, apex domain + `www` CNAME).
    explicitly. Never quote copyrighted news or stories verbatim — use
    public-domain/CC sources with attribution, or original summaries with a
    dated link.
-4. **Bump `CACHE_VERSION` in `sw.js` after editing any cached file**, and keep
-   `APP_BUILD` in `index.html` in step — it's shown in Definições and is how we
-   tell whether a device has actually updated.
+4. **Release with `node tools/bump.mjs`** after editing any cached file. Four
+   things must agree — `CACHE_VERSION`, `APP_BUILD`, the `?v=` on index.html's
+   `<script>`/`<link>` tags, and the same `?v=` in `APP_SHELL`. Never bump them
+   by hand. index.html is served **network-first** while its scripts are
+   **cache-first**, so mismatched `?v=` lets a fresh document run against the
+   previous release's scripts — that is how a signed-in user once got told to
+   sign in (new page called `MilSync.signedIn()`, old sync.js lacked it).
 
 ## Layout
 
