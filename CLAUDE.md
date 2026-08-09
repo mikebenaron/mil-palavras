@@ -108,6 +108,16 @@ Only cache responses that succeeded (`res.ok && status === 200`). Caching a 404
 once served it forever and broke the app until a version bump — that bug is
 fixed, don't reintroduce it.
 
+## Pronunciation respellings
+
+CAPITALS = stressed syllable; single-syllable words stay lowercase.
+Acute accent = OPEN vowel (ó→AW, é→EH); circumflex = closed (ô→OH, ê→AY).
+Nasals: before **p/b** write **m** (*tempo* = TEHM-poo); before other
+consonants write **n** (*conta* = KOHN-tah); before **nh** the "ny" already
+carries it (*banho* = BAH-nyoo). Only a **word-final** nasal is written
+"(nasal)", and never a trailing g/ng — hiding an audible m or n behind
+"(nasal)" loses a sound the learner actually makes.
+
 ## Scheduler — FSRS
 
 FSRS-4.5 replaced SM-2. Two state variables per card: **stability** (how long
