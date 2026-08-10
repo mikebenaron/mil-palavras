@@ -52,11 +52,12 @@ const ONLY_WORDS = argv.includes("--words");
 const ONLY_READINGS = argv.includes("--readings");
 const ONLY_DRILLS = argv.includes("--drills");
 const ONLY_PWORDS = argv.includes("--passagewords");
+const ONLY_EXAMPLES = argv.includes("--examples");
 /* --rung N limits conjugation audio to tenses at or below that ladder rung,
    so the default A2 queue can be fully recorded without committing to every
    tense's worth of mp3s. */
 const MAX_RUNG = argv.includes("--rung") ? Number(argv[argv.indexOf("--rung") + 1]) : 0;
-const PICKED = ONLY_WORDS || ONLY_READINGS || ONLY_DRILLS || ONLY_PWORDS;
+const PICKED = ONLY_WORDS || ONLY_READINGS || ONLY_DRILLS || ONLY_PWORDS || ONLY_EXAMPLES;
 
 /* ---- the same text the app would have spoken ---------------------- */
 /* Mirrors Speech.sayable() in index.html: alternatives separated by a slash
@@ -139,6 +140,24 @@ pfresh.sort();
    shorten this list and shift every passage-word index behind it. */
 const PWORDS = await pinned("passage", pfresh);
 
+/* The "Numa frase" example on every card. The word is already spoken; the
+   sentence showing how it is actually used was the one thing still silent —
+   and connected speech is where European Portuguese does the things that make
+   it hard: swallowed vowels, s turning to sh, words running together. */
+const contentJs = await fs.readFile(path.join(ROOT, "content.js"), "utf8");
+const cwin = {};
+new Function("window", contentJs)(cwin);
+const exSeen = new Set(), EXAMPLES = [];
+for (const c of WORDS) {
+  const entry = (cwin.MIL_CONTENT || {})[c.p];
+  const text = entry && entry.ex ? sayable(entry.ex) : "";
+  if (!text || exSeen.has(text)) continue;
+  exSeen.add(text);
+  EXAMPLES.push(text);
+}
+EXAMPLES.sort();
+const EXAMPLES_PINNED = await pinned("examples", EXAMPLES);
+
 const jobs = [];
 if (!PICKED || ONLY_WORDS) {
   for (const c of WORDS) {
@@ -161,6 +180,9 @@ if (!PICKED || ONLY_DRILLS) {
     const text = t == null ? "" : sayable(t);
     if (text) jobs.push({ file: path.join(AUDIO, "d", `${i}.mp3`), text });
   });
+}
+if (!PICKED || ONLY_EXAMPLES) {
+  EXAMPLES_PINNED.forEach((t, i) => { if (t) jobs.push({ file: path.join(AUDIO, "x", `${i}.mp3`), text: t }); });
 }
 if (!PICKED || ONLY_PWORDS) {
   PWORDS.forEach((t, i) => { if (t != null) jobs.push({ file: path.join(AUDIO, "p", `${i}.mp3`), text: t }); });
@@ -211,6 +233,7 @@ await fs.mkdir(path.join(AUDIO, "w"), { recursive: true });
 await fs.mkdir(path.join(AUDIO, "r"), { recursive: true });
 await fs.mkdir(path.join(AUDIO, "d"), { recursive: true });
 await fs.mkdir(path.join(AUDIO, "p"), { recursive: true });
+await fs.mkdir(path.join(AUDIO, "x"), { recursive: true });
 
 let made = 0, skipped = 0, failed = 0, n = 0;
 const started = Date.now();
@@ -258,6 +281,7 @@ const haveW = await listDir("w");
 const haveR = await listDir("r");
 const haveD = await listDir("d");
 const haveP = await listDir("p");
+const haveX = await listDir("x");
 
 // The app checks this before requesting a clip, so a missing file never costs
 // a failed round-trip — it falls back to speechSynthesis immediately.
@@ -265,7 +289,7 @@ await fs.writeFile(path.join(AUDIO, "manifest.json"), JSON.stringify({
   voice: VOICE,
   rate: RATE,
   built: new Date().toISOString().slice(0, 10),
-  bytes: await totalBytes(["w", "r", "d", "p"]),
+  bytes: await totalBytes(["w", "r", "d", "p", "x"]),
   words: haveW.map((f) => Number(f.replace(".mp3", ""))).sort((a, b) => a - b),
   readings: haveR.map((f) => f.replace(".mp3", "")).sort(),
   // Drill texts in file order: index i corresponds to audio/d/<i>.mp3, and
@@ -273,8 +297,10 @@ await fs.writeFile(path.join(AUDIO, "manifest.json"), JSON.stringify({
   drills: DRILLS.map((t, i) => (haveD.includes(i + ".mp3") ? t : null)),
   // Passage words, same positional scheme -> audio/p/<i>.mp3
   passage: PWORDS.map((t, i) => (haveP.includes(i + ".mp3") ? t : null)),
+  // Example sentences, same positional scheme -> audio/x/<i>.mp3
+  examples: EXAMPLES_PINNED.map((t, i) => (haveX.includes(i + ".mp3") ? t : null)),
 }));
 
 const mins = ((Date.now() - started) / 60000).toFixed(1);
 console.log(`\n\nmade ${made} · skipped ${skipped} · failed ${failed} · ${mins} min`);
-console.log(`audio/ now holds ${haveW.length} words, ${haveR.length} passage lines, ${haveD.length} drills, ${haveP.length} passage words`);
+console.log(`audio/ now holds ${haveW.length} words, ${haveR.length} passage lines, ${haveD.length} drills, ${haveP.length} passage words, ${haveX.length} examples`);
