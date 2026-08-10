@@ -99,6 +99,17 @@ Needs `.env` with `AZURE_SPEECH_KEY` and `AZURE_SPEECH_REGION` (currently
 `uksouth`). Free F0 tier: 500k chars/month; the whole library is ~62k, and
 existing files are never re-requested.
 
+`audio/manifest.json` is precached **with a `?v=` like every other shell file**
+— `cache.addAll()` fetches through the browser's HTTP cache, and an unversioned
+manifest was once precached stale, making the app believe audio it had didn't
+exist. Conjugation audio can be limited to a ladder rung:
+`node tools/audio/build.mjs --drills --rung 2`. The manifest reserves silent
+slots for unrecorded rungs, so recording them later shifts nothing.
+
+`noteCards()` is the ONLY renderer of the example/note block — renderFlip once
+carried its own copy, and a change landed everywhere except review and
+flashcards. Don't duplicate it again.
+
 Drill cards are **generated at runtime**, so their text exists nowhere on disk.
 `tools/audio/drills.mjs` runs the app's own generator in Node against a DOM
 stub rather than reimplementing conjugation rules — if it breaks after a
