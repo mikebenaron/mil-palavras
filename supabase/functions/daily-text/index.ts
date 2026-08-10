@@ -77,36 +77,44 @@ Return STRICT JSON only, no markdown fence, exactly this shape:
 Include 2 questions. Every string in "gaps" must appear exactly as written in one of the
 sentences.`;
 
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": key,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 2000,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-    if (!res.ok) {
-      const detail = (await res.text()).slice(0, 200);
-      return json({ error: `The writer refused (${res.status}): ${detail}` }, 502);
+    /* One retry, with the specific complaint fed back. A single Brazilian
+       slip or a gap that isn't verbatim is easy to correct and shouldn't cost
+       the user a failed tap — but we still never lower the bar. */
+    let passage: any = null, problems: string[] = [], lastNote = "";
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": key,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          max_tokens: 2000,
+          messages: [{ role: "user", content: prompt + lastNote }],
+        }),
+      });
+      if (!res.ok) {
+        const detail = (await res.text()).slice(0, 200);
+        return json({ error: `The writer refused (${res.status}): ${detail}` }, 502);
+      }
+
+      const out = await res.json();
+      const text = (out?.content ?? []).map((c: any) => c?.text ?? "").join("").trim();
+      try {
+        // Be forgiving about a stray fence; anything else is a genuine failure.
+        passage = JSON.parse(text.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim());
+      } catch {
+        problems = ["the response was not valid JSON"];
+        lastNote = "\n\nYour last reply was not valid JSON. Return only the JSON object.";
+        continue;
+      }
+      problems = validate(passage);
+      if (!problems.length) break;
+      lastNote = "\n\nYour last attempt was rejected for: " + problems.join("; ") +
+        "\nFix exactly that and return the JSON again.";
     }
-
-    const out = await res.json();
-    const text = (out?.content ?? []).map((c: any) => c?.text ?? "").join("").trim();
-
-    let passage: any;
-    try {
-      // Be forgiving about a stray fence; anything else is a genuine failure.
-      passage = JSON.parse(text.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim());
-    } catch {
-      return json({ error: "The passage came back malformed" }, 502);
-    }
-
-    const problems = validate(passage);
     if (problems.length) return json({ error: "Rejected: " + problems.join("; ") }, 502);
 
     passage.level = level;
@@ -122,7 +130,12 @@ sentences.`;
 
 /* Never trust the model on the one thing the whole app is about. */
 const BR = [
-  /\bvocê/i, /\ba gente\b/i, /\bônibus\b/i, /\btrem\b/i, /\bbanheiro\b/i,
+  /\bvocê/i,
+  // "toda a gente" is standard European Portuguese for "everyone" — only the
+  // subject-pronoun use ("a gente vai") is the Brazilian marker. Rejecting the
+  // first threw away perfectly good passages.
+  /(?<!\btoda\s)\ba gente\b/i,
+  /\bônibus\b/i, /\btrem\b/i, /\bbanheiro\b/i,
   /\bcelular\b/i, /café da manhã/i, /\bsuco\b/i, /\bgeladeira\b/i,
   /\b(estou|está|estão|estás|estamos|estava|estavam) \w+ndo\b/i,
   /\bpra(?![a-zà-ÿ])/i,

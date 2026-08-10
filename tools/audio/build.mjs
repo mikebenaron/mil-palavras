@@ -52,6 +52,10 @@ const ONLY_WORDS = argv.includes("--words");
 const ONLY_READINGS = argv.includes("--readings");
 const ONLY_DRILLS = argv.includes("--drills");
 const ONLY_PWORDS = argv.includes("--passagewords");
+/* --rung N limits conjugation audio to tenses at or below that ladder rung,
+   so the default A2 queue can be fully recorded without committing to every
+   tense's worth of mp3s. */
+const MAX_RUNG = argv.includes("--rung") ? Number(argv[argv.indexOf("--rung") + 1]) : 0;
 const PICKED = ONLY_WORDS || ONLY_READINGS || ONLY_DRILLS || ONLY_PWORDS;
 
 /* ---- the same text the app would have spoken ---------------------- */
@@ -108,7 +112,7 @@ async function pinned(kind, texts) {
 /* Conjugation and grammar drills. Without these, "Tudo" and "Mistura
    aleatória" mix unrecorded cards into a session and the device voice — often
    Brazilian, often the wrong gender — appears mid-drill. */
-const DRILLS = await pinned("drills", await drillTexts(ROOT));
+const DRILLS = await pinned("drills", await drillTexts(ROOT, MAX_RUNG || undefined));
 
 /* Individual words as they appear inside passages, so tapping any word in a
    story can play it. Only the ones no other set already covers — the deck and

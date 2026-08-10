@@ -14,7 +14,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-export async function drillTexts(ROOT) {
+export async function drillTexts(ROOT, maxRung) {
   const html = await fs.readFile(path.join(ROOT, "index.html"), "utf8");
   const lines = html.split("\n");
   const start = lines.findIndex((l) => l.startsWith("function esc(s){"));
@@ -62,10 +62,25 @@ export async function drillTexts(ROOT) {
     }
   }
 
+  /* Optional ceiling on how far up the tense ladder to go. The app's own
+     TENSES table carries each tense's rung, so read it rather than keeping a
+     second copy here that could drift. */
+  let rungOf = null;
+  if (maxRung) {
+    const m = /var TENSES = \[([\s\S]*?)\n\];/.exec(html);
+    if (!m) throw new Error("could not read the TENSES table");
+    rungOf = Object.fromEntries(
+      [...m[1].matchAll(/id:"([a-z]+)",[\s\S]*?lvl:(\d)/g)].map((x) => [x[1], Number(x[2])]));
+  }
+
   const seen = new Set(), out = [];
   for (const c of cards) {
     if (c.c !== "conjugacao" && c.c !== "gramatica") continue;
     if (!c.p) continue;
+    if (rungOf && c.c === "conjugacao") {
+      const tense = String(c.i).split("|")[2];
+      if ((rungOf[tense] || 99) > maxRung) continue;
+    }
     const t = String(c.p).replace(/\([^)]*\)/g, "").trim();   // drop "(usually)" notes
     // Bare endings ("-am") and contraction formulas ("de + a") aren't speech.
     if (!t || /^-/.test(t) || t.includes("+")) continue;
