@@ -1,6 +1,6 @@
 /* Mil Palavras service worker — offline app shell.
    Bump CACHE_VERSION whenever the app files change to force an update. */
-const CACHE_VERSION = 'mil-palavras-v47';
+const CACHE_VERSION = 'mil-palavras-v48';
 /* Audio lives in its own cache, deliberately NOT tied to CACHE_VERSION.
    The clips never change, they are ~82MB, and a user may have chosen to
    download all of them — wiping that on every app update (a CSS tweak!)
@@ -18,16 +18,16 @@ const APP_SHELL = [
   // network-first (always fresh) while these are cache-first, so without the
   // ?v= a new document could run against last release's scripts — which is
   // exactly how a signed-in user got told to sign in.
-  './vendor/supabase.js?v=47',
-  './sync-config.js?v=47',
-  './sync.js?v=47',
-  './content.js?v=47',
-  './readings.js?v=47',
+  './vendor/supabase.js?v=48',
+  './sync-config.js?v=48',
+  './sync.js?v=48',
+  './content.js?v=48',
+  './readings.js?v=48',
   // Versioned like the rest: cache.addAll() fetches through the browser's own
   // HTTP cache, so an unversioned manifest could be precached stale — and a
   // stale manifest means the app believes audio it has doesn't exist.
-  './audio/manifest.json?v=47',
-  './fonts.css?v=47'
+  './audio/manifest.json?v=48',
+  './fonts.css?v=48'
 ];
 // Audio clips are NOT precached — ~20MB is far too much to force on install.
 // They are cached individually by the fetch handler as they're played, and a
@@ -103,16 +103,50 @@ self.addEventListener('fetch', (event) => {
   const isClip = /\/audio\/.+\.mp3$/.test(new URL(req.url).pathname);
   const store = isClip ? AUDIO_CACHE : CACHE_VERSION;
 
+  /* Safari asks for media with a Range header and expects 206 Partial
+     Content. A cached Response replayed as a plain 200 makes it stall, retry,
+     and eventually crawl — which is exactly why recorded clips were slow while
+     the device voice, which never touches the network, was instant.
+     Serve the requested byte range properly instead. */
+  async function rangeFrom(cached, header) {
+    const buf = await cached.arrayBuffer();
+    const size = buf.byteLength;
+    const m = /bytes=(\d*)-(\d*)/.exec(header || "");
+    let start = m && m[1] ? parseInt(m[1], 10) : 0;
+    let end = m && m[2] ? parseInt(m[2], 10) : size - 1;
+    if (isNaN(start) || start < 0) start = 0;
+    if (isNaN(end) || end >= size) end = size - 1;
+    if (start > end) start = 0;
+    const chunk = buf.slice(start, end + 1);
+    return new Response(chunk, {
+      status: 206,
+      statusText: "Partial Content",
+      headers: {
+        "Content-Type": cached.headers.get("Content-Type") || "audio/mpeg",
+        "Content-Length": String(chunk.byteLength),
+        "Content-Range": "bytes " + start + "-" + end + "/" + size,
+        "Accept-Ranges": "bytes",
+      },
+    });
+  }
+
   /* Look in the ONE cache that could hold this, not across all of them.
      caches.match() is a global search: with thousands of clips in the audio
      cache it can stall for seconds on iOS, and every single playback paid
      that cost before the sound could start. */
+  const range = req.headers.get("range");
   event.respondWith(
     caches.open(store)
-      .then((cache) => cache.match(req).then((cached) => cached || fetch(req).then((res) => {
-        if (cacheable(res)) cache.put(req, res.clone());
-        return res;
-      })))
+      .then((cache) => cache.match(req, { ignoreSearch: false }).then((cached) => {
+        if (cached) return range ? rangeFrom(cached, range) : cached;
+        // Not cached: fetch it. A ranged miss goes straight to the network so
+        // Safari gets a real 206 from the server.
+        if (range) return fetch(req);
+        return fetch(req).then((res) => {
+          if (cacheable(res)) cache.put(req, res.clone());
+          return res;
+        });
+      }))
       .catch(() => fetch(req))
   );
 });
