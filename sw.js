@@ -1,6 +1,6 @@
 /* Mil Palavras service worker — offline app shell.
    Bump CACHE_VERSION whenever the app files change to force an update. */
-const CACHE_VERSION = 'mil-palavras-v48';
+const CACHE_VERSION = 'mil-palavras-v49';
 /* Audio lives in its own cache, deliberately NOT tied to CACHE_VERSION.
    The clips never change, they are ~82MB, and a user may have chosen to
    download all of them — wiping that on every app update (a CSS tweak!)
@@ -18,16 +18,16 @@ const APP_SHELL = [
   // network-first (always fresh) while these are cache-first, so without the
   // ?v= a new document could run against last release's scripts — which is
   // exactly how a signed-in user got told to sign in.
-  './vendor/supabase.js?v=48',
-  './sync-config.js?v=48',
-  './sync.js?v=48',
-  './content.js?v=48',
-  './readings.js?v=48',
+  './vendor/supabase.js?v=49',
+  './sync-config.js?v=49',
+  './sync.js?v=49',
+  './content.js?v=49',
+  './readings.js?v=49',
   // Versioned like the rest: cache.addAll() fetches through the browser's own
   // HTTP cache, so an unversioned manifest could be precached stale — and a
   // stale manifest means the app believes audio it has doesn't exist.
-  './audio/manifest.json?v=48',
-  './fonts.css?v=48'
+  './audio/manifest.json?v=49',
+  './fonts.css?v=49'
 ];
 // Audio clips are NOT precached — ~20MB is far too much to force on install.
 // They are cached individually by the fetch handler as they're played, and a
@@ -135,16 +135,23 @@ self.addEventListener('fetch', (event) => {
      cache it can stall for seconds on iOS, and every single playback paid
      that cost before the sound could start. */
   const range = req.headers.get("range");
+  // Always key the cache on the plain URL. iOS asks for media with a Range
+  // header on EVERY request, so keying on the request itself would mean media
+  // is never cached and every playback hits the network.
+  const key = new Request(req.url, { credentials: "same-origin" });
+
   event.respondWith(
     caches.open(store)
-      .then((cache) => cache.match(req, { ignoreSearch: false }).then((cached) => {
+      .then((cache) => cache.match(key).then((cached) => {
         if (cached) return range ? rangeFrom(cached, range) : cached;
-        // Not cached: fetch it. A ranged miss goes straight to the network so
-        // Safari gets a real 206 from the server.
-        if (range) return fetch(req);
-        return fetch(req).then((res) => {
-          if (cacheable(res)) cache.put(req, res.clone());
-          return res;
+        // Miss: fetch the WHOLE file (never the range), cache it, then serve
+        // the slice the browser asked for.
+        return fetch(key).then((res) => {
+          if (!cacheable(res)) return range ? fetch(req) : res;
+          const copy = res.clone();
+          return cache.put(key, copy)
+            .then(() => (range ? cache.match(key).then((c) => rangeFrom(c, range)) : res))
+            .catch(() => res);
         });
       }))
       .catch(() => fetch(req))
