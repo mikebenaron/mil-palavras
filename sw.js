@@ -1,6 +1,6 @@
 /* Mil Palavras service worker — offline app shell.
    Bump CACHE_VERSION whenever the app files change to force an update. */
-const CACHE_VERSION = 'mil-palavras-v46';
+const CACHE_VERSION = 'mil-palavras-v47';
 /* Audio lives in its own cache, deliberately NOT tied to CACHE_VERSION.
    The clips never change, they are ~82MB, and a user may have chosen to
    download all of them — wiping that on every app update (a CSS tweak!)
@@ -18,16 +18,16 @@ const APP_SHELL = [
   // network-first (always fresh) while these are cache-first, so without the
   // ?v= a new document could run against last release's scripts — which is
   // exactly how a signed-in user got told to sign in.
-  './vendor/supabase.js?v=46',
-  './sync-config.js?v=46',
-  './sync.js?v=46',
-  './content.js?v=46',
-  './readings.js?v=46',
+  './vendor/supabase.js?v=47',
+  './sync-config.js?v=47',
+  './sync.js?v=47',
+  './content.js?v=47',
+  './readings.js?v=47',
   // Versioned like the rest: cache.addAll() fetches through the browser's own
   // HTTP cache, so an unversioned manifest could be precached stale — and a
   // stale manifest means the app believes audio it has doesn't exist.
-  './audio/manifest.json?v=46',
-  './fonts.css?v=46'
+  './audio/manifest.json?v=47',
+  './fonts.css?v=47'
 ];
 // Audio clips are NOT precached — ~20MB is far too much to force on install.
 // They are cached individually by the fetch handler as they're played, and a
@@ -92,7 +92,8 @@ self.addEventListener('fetch', (event) => {
           }
           return res;
         })
-        .catch(() => caches.match('./index.html').then((r) => r || caches.match('./')))
+        .catch(() => caches.open(CACHE_VERSION)
+          .then((c) => c.match('./index.html').then((r) => r || c.match('./'))))
     );
     return;
   }
@@ -102,13 +103,16 @@ self.addEventListener('fetch', (event) => {
   const isClip = /\/audio\/.+\.mp3$/.test(new URL(req.url).pathname);
   const store = isClip ? AUDIO_CACHE : CACHE_VERSION;
 
+  /* Look in the ONE cache that could hold this, not across all of them.
+     caches.match() is a global search: with thousands of clips in the audio
+     cache it can stall for seconds on iOS, and every single playback paid
+     that cost before the sound could start. */
   event.respondWith(
-    caches.match(req).then((cached) => cached || fetch(req).then((res) => {
-      if (cacheable(res)) {
-        const copy = res.clone();
-        caches.open(store).then((cache) => cache.put(req, copy));
-      }
-      return res;
-    }))
+    caches.open(store)
+      .then((cache) => cache.match(req).then((cached) => cached || fetch(req).then((res) => {
+        if (cacheable(res)) cache.put(req, res.clone());
+        return res;
+      })))
+      .catch(() => fetch(req))
   );
 });
