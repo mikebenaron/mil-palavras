@@ -1,6 +1,6 @@
 /* Mil Palavras service worker — offline app shell.
    Bump CACHE_VERSION whenever the app files change to force an update. */
-const CACHE_VERSION = 'mil-palavras-v50';
+const CACHE_VERSION = 'mil-palavras-v51';
 /* Audio lives in its own cache, deliberately NOT tied to CACHE_VERSION.
    The clips never change, they are ~82MB, and a user may have chosen to
    download all of them — wiping that on every app update (a CSS tweak!)
@@ -18,16 +18,16 @@ const APP_SHELL = [
   // network-first (always fresh) while these are cache-first, so without the
   // ?v= a new document could run against last release's scripts — which is
   // exactly how a signed-in user got told to sign in.
-  './vendor/supabase.js?v=50',
-  './sync-config.js?v=50',
-  './sync.js?v=50',
-  './content.js?v=50',
-  './readings.js?v=50',
+  './vendor/supabase.js?v=51',
+  './sync-config.js?v=51',
+  './sync.js?v=51',
+  './content.js?v=51',
+  './readings.js?v=51',
   // Versioned like the rest: cache.addAll() fetches through the browser's own
   // HTTP cache, so an unversioned manifest could be precached stale — and a
   // stale manifest means the app believes audio it has doesn't exist.
-  './audio/manifest.json?v=50',
-  './fonts.css?v=50'
+  './audio/manifest.json?v=51',
+  './fonts.css?v=51'
 ];
 // Audio clips are NOT precached — ~20MB is far too much to force on install.
 // They are cached individually by the fetch handler as they're played, and a
