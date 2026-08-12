@@ -300,6 +300,35 @@ score returns, and that no recording is kept. **If that data flow ever changes,
 the notice must change with it** — the same applies to the conversation
 partner (#20), which would break the "nothing leaves your device" line.
 
+## Conversa (#20) — the partner that can only use your words
+
+`supabase/functions/conversa` is a conversation partner **held to the learner's
+own vocabulary**. That constraint is the feature: every AI tutor will talk to
+you, none of them know which words you have actually earned. The scheduler
+does, so the browser sends `knownWords()` (the same `iv >= 21` bar as the deck
+counter) plus the day's due words, and the server enforces it.
+
+Enforced, not merely requested: `validate()` re-checks the reply against the
+allowed set, exempting short tokens and a deliberately short `FREE` list of
+function words and ser/estar/ter/ir/haver/poder/querer. More than two stray
+words and the turn is rejected and regenerated. Brazilian markers are rejected
+the same way the daily text rejects them.
+
+Six scenarios live **server-side** in `SCENES`, so a crafted request can't turn
+this into a general assistant. Roles on incoming turns are normalised, so the
+client cannot inject a system turn.
+
+**`convCredit()` closes the loop**: a due word used correctly in a real
+sentence is retrieval, and the strongest kind the app can observe, so it feeds
+FSRS like every other mode. Deliberately conservative — only words already due,
+only when the partner found nothing to correct, never better than "Bom", and
+matched on a whole-word boundary (substring matching would credit *entre* for
+*entretanto*, and an unearned credit pushes a real due date out).
+
+The conversation is never stored. **The privacy notice covers this, and the
+home-screen footer no longer claims "nothing leaves this device"** — three
+features now talk to a server, and the footer names all three.
+
 ## Daily text (#18)
 
 `supabase/functions/daily-text` writes one EU-PT passage around the words the
