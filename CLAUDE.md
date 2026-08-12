@@ -322,12 +322,19 @@ the notice changes with it.**
 ## Outstanding (needs the user, not code)
 
 - `ola@milpalavras.app` is published in the privacy/terms pages but **does not
-  exist yet** — needs a GoDaddy forwarder.
-- `supabase functions deploy delete-account` — until deployed, account deletion
-  removes data and signs out but leaves the login record, and the app says so.
-- `supabase secrets set AZURE_SPEECH_KEY=... AZURE_SPEECH_REGION=uksouth` then
-  `supabase functions deploy speech-token` — until deployed, Falar shows
-  "assessment isn't switched on yet" instead of scoring.
-- `supabase secrets set ANTHROPIC_API_KEY=...` then
-  `supabase functions deploy daily-text` — until deployed, the daily text
-  button reports that the key isn't set.
+  exist yet** — needs a GoDaddy forwarder. Confirmed still missing: the domain
+  has no MX records at all.
+
+All three Edge Functions are deployed (probed 2026-08-12; each returns 401 to an
+unauthenticated POST, which only a deployed function does):
+
+| Function | Slug it actually answers on |
+|---|---|
+| `delete-account` | `delete-account` |
+| `speech-token` | `speech-token` |
+| `daily-text` | **`quick-endpoint`** — the dashboard assigned its own slug; the display name is only a label, which is why `DAILY_SLUGS` tries both |
+
+Deployment does **not** prove the secrets are set — a missing secret fails at
+call time, not at deploy time. The only way to know is to use the feature:
+Falar scores a recording (`AZURE_SPEECH_KEY`), and the daily text generates
+(`ANTHROPIC_API_KEY`, confirmed working).
