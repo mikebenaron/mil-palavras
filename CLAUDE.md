@@ -30,7 +30,7 @@ Live at **https://milpalavras.app** (GitHub Pages, apex domain + `www` CNAME).
 
 | File | What |
 |---|---|
-| `index.html` | The whole app: design system `<style>`, `window.__DATA__` (990 vocab cards), and one big IIFE |
+| `index.html` | The whole app: design system `<style>`, `window.__DATA__` (1,105 vocab cards), and one big IIFE |
 | `readings.js` | `window.MIL_READINGS` — 101 graded passages (A1–B2) |
 | `content.js` | `window.MIL_CONTENT` — per-word pronunciation, examples, notes |
 
@@ -47,8 +47,23 @@ adverb). They share one content entry, so its note must cover both senses.
 | `supabase/functions/` | Edge Functions (account deletion) |
 
 The app is one IIFE, so nothing is on `window` except deliberate hooks
-(`MilSync`, `MilLegal`, and `__CARDS__` under `?dev=1` on localhost). Screens
-are `render*()` functions writing `innerHTML` via `h()`, wired with `on(sel, ev, fn)`.
+(`MilSync`, `MilLegal`, and — under `?dev=1` on localhost only — `__CARDS__`
+and `__MP__`). Screens are `render*()` functions writing `innerHTML` via `h()`,
+wired with `on(sel, ev, fn)`.
+
+`__MP__` exposes the scheduler, state and plan for testing. It exists because
+the strict-mode closure made the app unreachable from outside, so nothing could
+be exercised — which is precisely how a dead `grade()` path and an untickable
+daily plan shipped unnoticed. Both gates are localhost-only and cannot run on
+the real domain.
+
+## The deck is append-only
+
+`window.__DATA__.cards` ids **are array indices**, and `S.prog` is keyed by
+them. Inserting, removing or reordering a card silently remaps every card in
+every user's scheduler — a word's history would land on a different word. Add
+new vocabulary at the **end** only. To retire a word, flag it and filter it out
+of `newPool()`; never splice it out.
 
 ## Running it
 
@@ -73,7 +88,7 @@ adding audio never requires touching call sites:
 
 | Dir | Contents | Manifest key |
 |---|---|---|
-| `audio/w/<cardId>.mp3` | 990 vocabulary cards | `words` (ids) |
+| `audio/w/<cardId>.mp3` | vocabulary cards | `words` (ids) |
 | `audio/r/<readingId>__<line>.mp3` | 517 passage lines | `readings` |
 | `audio/d/<i>.mp3` | conjugation + grammar drills | `drills` (texts, positional) |
 | `audio/p/<i>.mp3` | passage words, lower-cased | `passage` (texts, positional) |
@@ -213,12 +228,13 @@ the expansion, and 2,693 cards are already scheduled under them.
 Deliberately two separate verdicts, and they never share a total:
 
 - The **vocabulary card** answers *what does falar mean*. This is the only thing
-  the 990 counter on the home screen counts, and it always will be.
+  the deck counter on the home screen counts, and it always will be.
 - **`verbMastery(v)`** answers *can you conjugate it*, as a ladder. A verb is
-  conjugated to rung N when the lemma is known **and every cell of every tense
-  up to N is known** — same 21-day bar as everywhere else. Not a percentage, and
-  no skipping: one missing cell in the present drops the verb back to rung 0
-  even if all of B2 is complete.
+  conjugated to rung N when the lemma is known **and at least 95% of the cells
+  of every tense up to N are known** — same 21-day bar as everywhere else. Still
+  no skipping a rung. The bar used to be *every* cell, which meant one lapsed
+  `falas` demoted a verb that was otherwise complete through B2 — a noisy
+  signal for something the learner has demonstrably got.
 
 Rungs are A1 presente · A2 passado/imperfeito/imperativo/particípio · B1
 futuro/condicional/conjuntivo presente · B2 the rest. `S.set.tlvl` gates which
@@ -233,9 +249,21 @@ Asked about repeatedly; get these right:
 
 - `S.set.perDay` gates **intake only** (`newAllowance() = perDay − newToday`).
   It caps new cards entering `startReview()`, never the number of reviews.
-- Practice modes also call `grade()`, so studying outside Rever silently
-  consumes the daily new-word allowance.
-- **"Words started" must come from `deckProgress().started`** (990 vocab only).
+- **Every study mode feeds the scheduler**, not just Rever. Choice, type,
+  dictation, gender and speak call `practiceGrade(card, verdict)`, which maps
+  wrong/near/right to FSRS grades 1/2/3. Two deliberate limits: practice never
+  awards **Fácil** (grade 4) — recognising an option in a list is weaker
+  evidence than a considered self-grade — and it **never touches a card that
+  is not already in rotation**, so practising outside Rever cannot consume the
+  day's new-word allowance or introduce words out of order.
+  This paragraph previously claimed practice modes called `grade()`. They did
+  not: `grade()` had exactly one call site, in `renderFlip`. Every retrieval
+  outcome from the other five modes was discarded, and the doc hid it.
+- **Plan activity counters live in `studyBeat()`**, called once per answered
+  card by every mode — never inside `grade()`. When they lived in `grade()`,
+  `a.listen` and `a.drill` could never increment, so the Ditado and Escolha
+  plan steps were untickable and "Já chega por hoje" was unreachable.
+- **"Words started" must come from `deckProgress().started`** (vocabulary only).
   `Object.keys(S.prog).length` includes drill cards and produces a second,
   larger number under the same label — that was a real bug.
 - Trouble words: `p.l` counts "Outra vez" grades and only ever increments, so
