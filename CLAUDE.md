@@ -313,6 +313,28 @@ restored — a half-finished queue from last week is stale, because the schedule
 has moved on. "Recomeçar" inside the session is the deliberate way to throw a
 queue away.
 
+## The two "everything" decks
+
+`__random` and `__all` in the deck picker used to start from an identical
+`CARDS.slice()` and differ only in how they were sliced afterwards. The result
+was that each behaved like the other's label: `__all` took `pool.slice(0, 60)`,
+and since `CARDS = WORDS.concat(DRILLS)` that is the sixty commonest *words* —
+a beginner vocabulary set called "Tudo". Meanwhile `__random` drew uniformly
+over 16,263 cards of which 14,819 are conjugation cells, so "random mix" was
+91% verb tables.
+
+They are now two different queries. **Mistura equilibrada** (`mixedPool()`) is
+stratified 3 words : 1 conjugation : 1 grammar — the same ratio `newPool()`
+uses for the daily intake, so the mix you can ask for is the mix the app
+already gives you unasked. **Tudo, sem filtro** is a genuine uniform draw and
+the row says what that means in practice.
+
+Both, along with `__started`, `__weak` and the class decks, exclude
+`tenseBlocked()` cards: a rung switched off in Definições is off here too.
+`renderDrillPicker` deliberately does **not** — Conjugações is the by-hand
+route, and drilling a tense on purpose is a different act from having it
+arrive unasked.
+
 ## Order of presentation
 
 Pools are **selected by frequency and presented shuffled**. The deck is ordered
