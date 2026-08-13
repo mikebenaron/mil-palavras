@@ -305,8 +305,17 @@ partner (#20), which would break the "nothing leaves your device" line.
 `supabase/functions/conversa` is a conversation partner **held to the learner's
 own vocabulary**. That constraint is the feature: every AI tutor will talk to
 you, none of them know which words you have actually earned. The scheduler
-does, so the browser sends `knownWords()` (the same `iv >= 21` bar as the deck
-counter) plus the day's due words, and the server enforces it.
+does, so the browser sends `conversaVocab()` plus the day's due words, and the
+server enforces it.
+
+`conversaVocab()` returns **two tiers**: `earned` (past the 21-day bar, what
+the deck counter calls *sabes*) and `met` (in rotation, not there yet), sorted
+strongest first. The gate was originally 15 *earned* words and that was the
+wrong bar — 21 days is what it takes to claim you know a word, not what it
+takes for that word to be usable in a sentence spoken to you, and it locked the
+feature away from anyone whose deck was younger than three weeks. Both tiers go
+to the partner; `CONV_MIN` (15, total) is only the floor below which no
+conversation is possible at all.
 
 Enforced, not merely requested: `validate()` re-checks the reply against the
 allowed set, exempting short tokens and a deliberately short `FREE` list of
