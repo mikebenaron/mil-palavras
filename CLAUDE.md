@@ -261,6 +261,17 @@ Asked about repeatedly; get these right:
 
 - `S.set.perDay` gates **intake only** (`newAllowance() = perDay − newToday`).
   It caps new cards entering `startReview()`, never the number of reviews.
+- **Flashcards ask two questions, not four.** Rever shows the scheduler's own
+  Outra/Difícil/Bom/Fácil with real intervals; Cartões shows *Ainda aprendo* →
+  grade 1 and *Já sei* → grade 3, because flipping through a deck is a coarser
+  act than a considered self-grade. Both buttons were once the same button:
+  they shared a `data-adv` handler that advanced the card and recorded nothing
+  — no grade, no lapse, no tally, no plan tick — which is why the audit that
+  found `grade()`'s single call site missed this mode entirely. It looks for
+  `data-grade`; flashcards never had one.
+  *Ainda aprendo* maps to **wrong, not near**: mapped to near it became grade 2,
+  and FSRS grows stability on a hard-but-early review, so pressing "still
+  learning" on a 30-day card pushed it out to 32 days.
 - **Every study mode feeds the scheduler**, not just Rever. Choice, type,
   dictation, gender and speak call `practiceGrade(card, verdict)`, which maps
   wrong/near/right to FSRS grades 1/2/3. Two deliberate limits: practice never
