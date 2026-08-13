@@ -270,6 +270,45 @@ Asked about repeatedly; get these right:
   trouble is `l >= TROUBLE_AT (4) && iv < 21`. The `iv` clause is what lets a
   mastered word age out.
 
+## Navigation and sessions
+
+`NAV` is a stack of screen keys, mirrored into `history.pushState` so the iOS
+edge-swipe and the Android back button drive it too, and persisted in `S.ui.nav`.
+Before it, every screen rendered a back link hard-wired to `home`, so however
+deep you went back was a trapdoor to the top — and iOS discarding a suspended
+PWA meant the restart landed on home as well.
+
+**`renderPage` must pass `backNav` through untouched.** It used to do
+`backLink(backNav || "home", …)`, and that `|| "home"` silently defeated the
+whole stack: every screen that doesn't name a destination wants the stack's
+answer, not a hard-coded trip home.
+
+Sessions survive leaving. `sesSnapshot()` stores mode, card ids, index and
+tallies in `S.ui.ses`; `go()` walks back into an unfinished queue in the same
+mode instead of asking which deck you wanted. Only **today's** session is
+restored — a half-finished queue from last week is stale, because the scheduler
+has moved on. "Recomeçar" inside the session is the deliberate way to throw a
+queue away.
+
+## Order of presentation
+
+Pools are **selected by frequency and presented shuffled**. The deck is ordered
+by usefulness, so the top of a set is the right part to study — but inside a
+class, deck order is also semantic order, and the números set arrived *dois,
+três, quatro…* with the months in calendar order, which makes the answer
+guessable from position alone. The same applies to the day's new intake:
+`newPool()` picks, `shuffle()` presents.
+
+## What is not speech
+
+`speakable(t)` rejects contraction formulas (`a + os`) and bare endings (`-am`).
+These are notation, and `tools/audio/drills.mjs` has always excluded them from
+the recordings — but the app didn't know the rule, so asking for one found no
+clip and fell through to the device voice reading "a plus os" aloud. The guard
+sits on `sayBtn`, `sayLine`, `autoSay` **and inside `synth()`** as a last line
+of defence. The device voice remains a fine safety net for a real word with no
+recording; it is never right for notation.
+
 ## Sync
 
 Push is automatic (debounced 1.2s on every `save()`). Pull happens at sign-in,
