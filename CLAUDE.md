@@ -237,11 +237,23 @@ Deliberately two separate verdicts, and they never share a total:
   signal for something the learner has demonstrably got.
 
 Rungs are A1 presente · A2 passado/imperfeito/imperativo/particípio · B1
-futuro/condicional/conjuntivo presente · B2 the rest. `S.set.tlvl` gates which
-tenses enter the **daily queue only** (`newPool()`); every tense is always
-drillable by hand from Conjugações. Default is 2. All twelve at once is 14,819
-conjugation cards, which buries the vocabulary the ladder exists to support —
-that is what the setting is for, not a content restriction.
+futuro/condicional/conjuntivo presente · B2 the rest.
+
+**`S.set.tlv` switches each rung on or off independently, and it is global**: a
+rung that is off contributes no new cards *and* is filtered out of `dueList()`.
+That second half is the point. The old `S.set.tlvl` was a single "up to rung N"
+ladder gating `newPool()` only — so turning it down stopped new B2 cards
+arriving and did nothing about the hundreds already in rotation, which kept
+coming back for ever. `tenseOn(lvl)` and `tenseBlocked(card)` are the gate;
+`tlvl` survives only as the value the one-time migration reads.
+
+Nothing is deleted. A rung switched off keeps its stability and its due dates,
+so switching it back on returns those cards exactly where they were — overdue,
+most likely, which is honest, because you did stop reviewing them. Every tense
+stays drillable by hand from Conjugações, where an off rung is labelled
+*desligado nas Definições* rather than hidden, and the UI refuses to switch the
+last rung off. Default is A1 + A2 on: all twelve at once is 14,819 conjugation
+cards, which buries the vocabulary the ladder exists to support.
 
 ## Scheduler semantics
 
