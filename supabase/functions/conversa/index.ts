@@ -164,7 +164,10 @@ Return STRICT JSON only, no markdown fence:
     if (problems.length) return json({ error: "Rejected: " + problems.join("; ") }, 502);
 
     out.scene = scene;
-    return json({ turn: out });
+    /* Name the function in its own response. If the wrong source is ever
+       deployed to this slug again, the client can say so instead of relaying
+       a message that appears to blame the learner's vocabulary. */
+    return json({ fn: "conversa", turn: out });
   } catch (e) {
     return json({ error: String(e) }, 500);
   }
