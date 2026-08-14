@@ -58,6 +58,14 @@ const ONLY_EXAMPLES = argv.includes("--examples");
    tense's worth of mp3s. */
 const MAX_RUNG = argv.includes("--rung") ? Number(argv[argv.indexOf("--rung") + 1]) : 0;
 const PICKED = ONLY_WORDS || ONLY_READINGS || ONLY_DRILLS || ONLY_PWORDS || ONLY_EXAMPLES;
+/* --text "houver,houvesse" records just those phrases, wherever they live.
+   Adding a form to the conjugation engine leaves a handful of new cells with
+   no clip, and the alternative was --drills, which means "everything missing"
+   — currently 30,000 clips and about a gigabyte. This exists so a small fix
+   can have a small build. Slots are found by text, so nothing is renumbered. */
+const ONLY_TEXT = argv.includes("--text")
+  ? new Set(String(argv[argv.indexOf("--text") + 1] || "").split(",").map((s) => s.trim()).filter(Boolean))
+  : null;
 
 /* ---- the same text the app would have spoken ---------------------- */
 /* Mirrors Speech.sayable() in index.html: alternatives separated by a slash
@@ -94,12 +102,29 @@ const READINGS = win.MIL_READINGS || [];
    out. A text keeps the index it owns, new texts are appended after the end,
    and a slot whose text is no longer generated is left exactly where it is
    rather than being reused. Adding tenses cost 8,195 new clips and re-recorded
-   none of the 2,855 that were already correct. */
+   none of the 2,855 that were already correct.
+
+   The slot list is kept in slots.json rather than read back out of the
+   manifest, because the manifest deliberately writes null for any slot whose
+   clip does not exist yet — the app uses that to avoid a doomed round trip.
+   Reading the slot list from it therefore made every UNRECORDED text look like
+   a text that had never been seen, so each build appended the whole lot again:
+   the drill list went 30,401 -> 36,237 -> 41,951 in three runs, and would have
+   kept going. Indices never moved, so nothing was ever mislabelled — it just
+   grew a file that every client downloads. slots.json keeps the text for every
+   slot, recorded or not, and must be committed alongside the manifest. */
 async function pinned(kind, texts) {
   let prev = [];
   try {
-    prev = JSON.parse(await fs.readFile(path.join(AUDIO, "manifest.json"), "utf8"))[kind] || [];
+    prev = JSON.parse(await fs.readFile(path.join(AUDIO, "slots.json"), "utf8"))[kind] || [];
   } catch {}
+  if (!prev.length) {
+    /* First run after this change, or a fresh checkout: fall back to the
+       manifest, which is right for every slot that has a clip. */
+    try {
+      prev = JSON.parse(await fs.readFile(path.join(AUDIO, "manifest.json"), "utf8"))[kind] || [];
+    } catch {}
+  }
   const slot = new Set(prev.filter((t) => t != null));
   const out = prev.slice();
   for (const t of texts) {
@@ -108,6 +133,20 @@ async function pinned(kind, texts) {
     out.push(t);
   }
   return out;
+}
+/* Every slot's text, nulls and all — the record the manifest cannot keep. */
+async function writeSlots(map) {
+  await fs.writeFile(path.join(AUDIO, "slots.json"), JSON.stringify(map) + "\n");
+}
+/* Drop trailing empty slots from a manifest list. A slot past the last
+   recording names nothing and no client has ever fetched a file for it, so
+   cutting it changes no index and no URL — it just stops shipping thousands of
+   nulls to every phone. Slots in the middle stay: recording one later must not
+   move the clips that come after it. */
+function trimTail(list) {
+  let last = -1;
+  list.forEach((t, i) => { if (t != null) last = i; });
+  return list.slice(0, last + 1);
 }
 
 /* Conjugation and grammar drills. Without these, "Tudo" and "Mistura
@@ -186,6 +225,18 @@ if (!PICKED || ONLY_EXAMPLES) {
 }
 if (!PICKED || ONLY_PWORDS) {
   PWORDS.forEach((t, i) => { if (t != null) jobs.push({ file: path.join(AUDIO, "p", `${i}.mp3`), text: t }); });
+}
+
+/* Applied after the jobs are built rather than while building them, so a named
+   phrase is found in whichever set actually owns it. */
+if (ONLY_TEXT) {
+  const before = jobs.length;
+  const keep = jobs.filter((j) => ONLY_TEXT.has(j.text));
+  jobs.length = 0;
+  jobs.push(...keep);
+  const found = new Set(keep.map((j) => j.text));
+  for (const t of ONLY_TEXT) if (!found.has(t)) console.log(`  ! "${t}" is in no set — nothing to record`);
+  console.log(`--text: ${jobs.length} of ${before} jobs`);
 }
 
 const chars = jobs.reduce((n, j) => n + j.text.length, 0);
@@ -294,12 +345,16 @@ await fs.writeFile(path.join(AUDIO, "manifest.json"), JSON.stringify({
   readings: haveR.map((f) => f.replace(".mp3", "")).sort(),
   // Drill texts in file order: index i corresponds to audio/d/<i>.mp3, and
   // only entries whose file actually exists are listed.
-  drills: DRILLS.map((t, i) => (haveD.includes(i + ".mp3") ? t : null)),
+  drills: trimTail(DRILLS.map((t, i) => (haveD.includes(i + ".mp3") ? t : null))),
   // Passage words, same positional scheme -> audio/p/<i>.mp3
-  passage: PWORDS.map((t, i) => (haveP.includes(i + ".mp3") ? t : null)),
+  passage: trimTail(PWORDS.map((t, i) => (haveP.includes(i + ".mp3") ? t : null))),
   // Example sentences, same positional scheme -> audio/x/<i>.mp3
-  examples: EXAMPLES_PINNED.map((t, i) => (haveX.includes(i + ".mp3") ? t : null)),
+  examples: trimTail(EXAMPLES_PINNED.map((t, i) => (haveX.includes(i + ".mp3") ? t : null))),
 }));
+
+/* The same three lists, un-nulled. This is what the next build reads to know
+   which text already owns which index — see pinned(). */
+await writeSlots({ drills: DRILLS, passage: PWORDS, examples: EXAMPLES_PINNED });
 
 const mins = ((Date.now() - started) / 60000).toFixed(1);
 console.log(`\n\nmade ${made} · skipped ${skipped} · failed ${failed} · ${mins} min`);
