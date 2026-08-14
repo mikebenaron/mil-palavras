@@ -293,6 +293,41 @@ Asked about repeatedly; get these right:
   trouble is `l >= TROUBLE_AT (4) && iv < 21`. The `iv` clause is what lets a
   mastered word age out.
 
+## The redesign (Aug 2026 handoff)
+
+Two navigation levels and only two. A **place** keeps the tab bar — Hoje · Ler ·
+**Estudar** · Memória · Eu; a **session** owns the viewport, with `sair` and a
+counter at the top and no tab bar. `PLACE_OF` maps every screen key to one of
+the five, so the right tab is lit wherever you are; anything unmapped is a
+session. Deck pickers are places belonging to Estudar, so you can leave
+sideways rather than only backwards.
+
+**Hoje answers one question.** The session is planned before it starts
+(`sessionPlan()`), and the 88px numeral, the "10 dos 29 · cerca de 5 min" line,
+the palavras/verbos/outras split and the CTA all describe the same queue.
+`sesLen` (5/10/20/tudo) is persisted and **`startReview` must honour it** — if
+it doesn't, the panel is lying about what pressing Começar does.
+
+**Estudar is mode → bucket**, not a wall of tiles. The two "rever" rows skip
+the bucket step because the scheduler already owns that queue.
+
+**The card back is context-before-meaning**, and the order is the point: full
+Portuguese sentence with no English, then `significa` and the English, then
+`família`, then the note. The front carries the same sentence with the word
+blanked. `noteCards(c, notesOnly)` exists so the back doesn't print the
+sentence twice — it is still the only renderer of that block.
+
+`families.js` holds **authored** word families: collocations and situational
+neighbours, never morphological derivations. *o comboio* travels with *a
+estação, o bilhete, a linha, atrasado* — not with "comboiar". A card with no
+family omits the section.
+
+Three themes: light, dark, night. The old dark put paper at 19% L and card at
+23%, four points apart, which is why nothing separated; it is 16 → 22 → 26 now.
+Night is warm-hued and never chosen by `auto`. New tokens (`--panel`,
+`--onpanel*`, `--btn`/`--onbtn`) sit alongside the originals so old rules keep
+working.
+
 ## Navigation and sessions
 
 `NAV` is a stack of screen keys, mirrored into `history.pushState` so the iOS
