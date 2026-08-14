@@ -194,8 +194,25 @@ const REF = {
   aceitar:{ pp:"aceite" },
   servir: { im:["servia","servias","servia","servíamos","serviam"],
             sp:["sirva","sirvas","sirva","sirvamos","sirvam"] },
-  haver:  { sp:["haja","hajas","haja","hajamos","hajam"] }
+  /* Impersonal: there is no "houveram", so the tenses grown from the eles past
+     have a third person and nothing else — but "se houvesse" and "quando
+     houver" are among the commonest things anyone says, so they must exist. */
+  haver:  { sp:["haja","hajas","haja","hajamos","hajam"],
+            si:[null,null,"houvesse",null,null],
+            sf:[null,null,"houver",null,null],
+            mq:[null,null,"houvera",null,null] },
+  /* Defective in person, not in tense: no eu form for the subjunctive to be
+     derived from, yet "espero que não aconteça nada" is ordinary Portuguese. */
+  acontecer: { sp:[null,null,"aconteça",null,"aconteçam"] },
+  /* A boot verb accents the stem only where the stem is stressed. reunimos has
+     no accent, and neither does reunamos. */
+  reunir: { sp:["reúna","reúnas","reúna","reunamos","reúnam"],
+            p:["reúno","reúnes","reúne","reunimos","reúnem"] }
 };
+
+/* Tenses that must NOT be generated at all. A verb with no first person has
+   nobody to command, and an imperative of acontecer would be nonsense. */
+const ABSENT = { acontecer: ["mp"] };
 
 let pass = 0, fail = 0;
 const failures = [];
@@ -206,6 +223,13 @@ for (const [v, want] of Object.entries(REF)) {
     const a = JSON.stringify(g), b = JSON.stringify(exp);
     if (a === b) pass++;
     else { fail++; failures.push(`${v} · ${tid}\n     want ${b}\n     got  ${a}`); }
+  }
+}
+for (const [v, tids] of Object.entries(ABSENT)) {
+  const got = conjugateAll(v);
+  for (const tid of tids) {
+    if (got.f[tid] === undefined) pass++;
+    else { fail++; failures.push(`${v} · ${tid}\n     want no such tense\n     got  ${JSON.stringify(got.f[tid])}`); }
   }
 }
 console.log(`checks: ${pass} pass, ${fail} fail`);

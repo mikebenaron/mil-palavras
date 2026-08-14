@@ -195,6 +195,28 @@ irregular future stems (`dir- / far- / trar-`), four irregular imperfects
 not predict (`seja esteja vá dê saiba queira haja`), and a participle list.
 Adding these tenses needed no second irregular-verb dataset.
 
+**Deriving from a principal part fails when the verb hasn't got one**, and the
+three verbs that proved it are worth keeping in mind:
+
+- **`haver` is impersonal** — "houve um problema", never "houveram" — so it has
+  no `eles` past, and the three tenses grown from that stem came out empty.
+  But *se houvesse* and *quando houver* are among the commonest things anyone
+  says. `PRET_DEF` supplies the stem and the persons it has; the rest stay null.
+- **`acontecer` has no `eu` form**, so the present subjunctive had nothing to
+  come from — yet *espero que não aconteça nada* is ordinary Portuguese. It is
+  now built from the `eu` form the verb *would* have had, `subpStemEI()` making
+  the -cer → -ç shift the missing form would have shown. A verb defective in
+  the present stays defective in the subjunctive, person for person, and one
+  with no first person gets no imperative at all.
+- **A boot verb accents its stem only where the stem is stressed.** `reúno` but
+  `reunimos`, and the subjunctive inherits both: `reúna` but **`reunamos`**.
+  `presNosStem()` reads the unaccented stem out of the `nós` present and uses it
+  for that one cell. The guard is a de-accented comparison, so `tenho`/`temos`
+  and `durmo`/`dormimos` — different stems, not accent variants — don't trigger it.
+
+All three are locked into `tools/conj-check.mjs`, which also has an `ABSENT`
+table for tenses that must **not** be generated.
+
 ```bash
 node tools/conj-check.mjs      # 127 forms against hand-written paradigms
 ```
