@@ -10,7 +10,7 @@
      • login/signup  — email + password (Supabase auth)
      • enterApp()    — load this account's progress, then run app
      • push()/pull() — keep local and cloud in step (offline-first,
-                       last-write-wins by S._updatedAt)
+                       merged per card, never last-write-wins)
    ============================================================ */
 (function () {
   "use strict";
@@ -35,38 +35,69 @@
   var pushTimer = null;
   var pending = null;      // the state a debounced push is holding, so it can be flushed
   var synced = false;      // true once this session has actually READ the server row
+  var serverTs = null;     // the row's updated_at as the server last reported it
   var status = "";
   var listening = false;
 
-  /* ------------------- local backup of last progress -------------------
-     Signing out replaces the device's only copy of the progress with an
-     empty state, and that is fine exactly as long as the server row is
-     current — which is not something the app was in a position to promise.
-     So nothing is ever overwritten now without a copy being kept first:
-     one slot, holding the most recent non-empty state and the account it
-     belonged to. It is what makes sign-out survivable. */
-  var BACKUP_KEY = "milpalavras.backup";
+  /* ----------------------- local snapshots -----------------------
+     The device keeps its own short history of this account's progress,
+     independently of the server. It exists because the two moments when
+     the app throws local progress away — signing out, and applying what
+     the server says — used to be the moments it could be lost for good.
 
-  function backupRead() {
+     One snapshot per account per day, newest first, trimmed to a byte
+     budget rather than a count, because a full deck is a megabyte and a
+     beginner's is a hundredth of that. They are never cleared by signing
+     out; that is the whole point of them. */
+  var SNAP_KEY = "milpalavras.snaps";
+  var SNAP_BUDGET = 1500000;    // a maxed-out deck is ~1.3MB; most are a fiftieth of that
+  var SNAP_KEEP = 14;           // and a fortnight is further back than anyone needs
+
+  function snapsRead() {
     try {
-      var raw = window.localStorage.getItem(BACKUP_KEY);
-      var b = raw ? JSON.parse(raw) : null;
-      return b && b.state && b.state.prog ? b : null;
-    } catch (e) { return null; }
+      var raw = window.localStorage.getItem(SNAP_KEY);
+      var list = raw ? JSON.parse(raw) : null;
+      return list && list.length ? list.filter(function (s) { return s && s.state && s.state.prog; }) : [];
+    } catch (e) { return []; }
   }
-  function backupWrite(state, why) {
-    if (!state || score(state) === 0) return;          // never let an empty state clobber a real backup
-    var prev = backupRead();
-    // Timestamps only ever move forward, so an older copy never displaces a newer one.
-    if (prev && prev.uid === (state._uid || null) && tsOf(prev.state) >= tsOf(state)) return;
-    try {
-      window.localStorage.setItem(BACKUP_KEY, JSON.stringify({
-        at: Date.now(), why: why || "", uid: state._uid || null, state: state
-      }));
-    } catch (e) { /* quota — the sign-out must still work */ }
+  function snapsWrite(list) {
+    // Newest first, then keep as many as fit. Dropping the oldest is the only
+    // acceptable way to lose one, and a full disk must not break signing out.
+    list.sort(function (x, y) { return (y.at || 0) - (x.at || 0); });
+    if (list.length > SNAP_KEEP) list.length = SNAP_KEEP;
+    var bytes = 0, keep = [];
+    for (var i = 0; i < list.length; i++) {
+      var s = JSON.stringify(list[i]);
+      if (keep.length && bytes + s.length > SNAP_BUDGET) break;
+      bytes += s.length; keep.push(list[i]);
+    }
+    while (keep.length) {
+      try { window.localStorage.setItem(SNAP_KEY, JSON.stringify(keep)); return; }
+      catch (e) { keep.pop(); }        // quota: shed the oldest and try again
+    }
+    try { window.localStorage.removeItem(SNAP_KEY); } catch (e) {}
   }
-  function backupClear() {
-    try { window.localStorage.removeItem(BACKUP_KEY); } catch (e) {}
+  function snapTake(state, why) {
+    if (!state || score(state) === 0) return;      // an empty state is not worth keeping
+    var uid = state._uid || null, day = Math.floor(Date.now() / 86400000);
+    var list = snapsRead(), i;
+    for (i = 0; i < list.length; i++) {
+      if (list[i].uid === uid && list[i].day === day) {
+        if (tsOf(list[i].state) >= tsOf(state) && score(list[i].state) >= score(state)) return;
+        list.splice(i, 1); break;                  // one per account per day, the fullest one
+      }
+    }
+    list.push({ at: Date.now(), day: day, uid: uid, why: why || "", state: state });
+    snapsWrite(list);
+  }
+  // The most recent copy this device holds of a given account.
+  function snapLatest(uid) {
+    var list = snapsRead(), best = null;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].uid !== uid && list[i].uid !== null) continue;
+      if (!best || tsOf(list[i].state) > tsOf(best.state)) best = list[i];
+    }
+    return best;
   }
 
   var BADGE =
@@ -113,6 +144,7 @@
     window.addEventListener("offline", function () { setStatus("Sem ligação · offline — saved on this device"); });
     window.addEventListener("online", function () {
       setStatus("A sincronizar… · reconnecting…");
+      retryPush();
       if (session && bridge) doPush(bridge.get());
       maybePull();
     });
@@ -145,9 +177,13 @@
      refresh token finally expires, which is a wipe nobody asked for. */
   function signedOut() {
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
+    if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
     pending = null;
+    dirty = null;
+    retryWait = 0;
     synced = false;
-    if (bridge) backupWrite(bridge.get(), "signout");
+    serverTs = null;
+    if (bridge) snapTake(bridge.get(), "signout");
     resetLocal();
     renderLogin("signin");
   }
@@ -228,65 +264,65 @@
     return (s.reviews || 0) + (s.prog ? Object.keys(s.prog).length : 0) + (s.streak || 0);
   }
 
-  // Reconcile this account's progress between the server and the local cache.
+  /* Reconcile this account's progress between the server, this device's live
+     copy, and this device's own snapshot of the account.
+
+     There used to be five branches here deciding which copy should win, and
+     every one of them threw the other copy away. They are gone: the three
+     copies are *merged*, so the question of who wins is only ever asked per
+     card, and never in a way that can subtract. What survived is the one
+     judgement a merge cannot make — whether a copy belongs to this account at
+     all. Another person's deck on a shared device is not merged into yours. */
   function syncUserData() {
     var U = session.user.id;
-    return client.from("progress").select("data").eq("user_id", U).maybeSingle()
+    return client.from("progress").select("data, updated_at").eq("user_id", U).maybeSingle()
       .then(function (res) {
         if (res.error) throw res.error;
         // We have now read the server, so writing to it can no longer destroy
         // something we never saw. Nothing before this line may push.
         synced = true;
+        serverTs = res.data ? res.data.updated_at : null;
         var remote = res.data ? res.data.data : null;
         var local = bridge.get();
-        var localIsThisUser = local && local._uid === U;
+        // No _uid means progress made before this device ever signed in — it
+        // belongs to whoever is signing in on it now. Someone else's does not.
+        var mine = local && (!local._uid || local._uid === U) ? local : null;
+        if (local && !mine) snapTake(local, "other-account");
+        // What this device last knew about this account, which after a sign-out
+        // is the only place the last few days still exist.
+        var kept = snapLatest(U);
 
-        // Work this account did on this device that never reached the server —
-        // most likely because signing out wiped it before the last push landed.
-        // Same last-write-wins rule as everywhere else, so a genuinely newer
-        // row written by another device still takes precedence.
-        var back = backupRead();
-        if (back && back.uid === U && !localIsThisUser && tsOf(back.state) > tsOf(remote)) {
-          backupClear();
-          back.state._uid = U;
-          applyState(back.state);
-          doPush(back.state);
-          return;
-        }
+        var merged = remote || null;
+        [kept && kept.state, mine].forEach(function (s) {
+          if (s && s.prog) merged = merged ? mergeStates(merged, s) : s;
+        });
+        if (!merged) merged = bridge.freshState();
+        merged._uid = U;
 
-        if (remote) {
-          if (localIsThisUser) {
-            // Same account already synced here — last-write-wins by timestamp.
-            if (tsOf(local) > tsOf(remote)) doPush(local);
-            else { remote._uid = U; applyState(remote); }
-          } else if (local && !local._uid && score(remote) === 0 && score(local) > 0) {
-            // First login on a device that has un-synced progress (e.g. from the
-            // original offline app), and the account's server row is still empty:
-            // seed the account from this device so that progress isn't lost.
-            local._uid = U; bridge.persist(); doPush(local);
-          } else {
-            // Server is authoritative for this account.
-            remote._uid = U; applyState(remote);
-          }
-        } else {
-          // No server row yet for this account.
-          if (local && local._uid && local._uid !== U) {
-            // Someone else used this device — start this account clean.
-            var fresh = bridge.freshState(); fresh._uid = U; applyState(fresh);
-            doPush(fresh);
-          } else {
-            // Claim the current local progress for this account and seed the server.
-            local._uid = U; bridge.persist(); doPush(local);
-          }
-        }
+        applyState(merged);
+        // Push whenever the merge added anything the server didn't have. It
+        // costs one write and it is how another device's work gets home.
+        if (!remote || score(merged) !== score(remote) || tsOf(merged) !== tsOf(remote)) doPush(merged, true);
       });
   }
 
+  /* The app owns the shape of its state, so it owns the merge; sync.js only
+     knows to call it. An older cached index.html won't have one — fall back to
+     the copy with more in it rather than to a hard-coded rule that could drop
+     the other. */
+  function mergeStates(a, b) {
+    if (bridge.merge) return bridge.merge(a, b);
+    return score(a) >= score(b) ? a : b;
+  }
+
   function applyState(ns) {
-    // If what's being replaced holds more progress than what's arriving, keep
-    // a copy of it — the device is the only place that work still exists.
+    /* If what's being replaced holds more than what's arriving, keep it. The
+       merge means that should now be impossible for this account — which is
+       exactly the sort of belief a safety net is for. Guarded, because reading
+       and rewriting the snapshot list on every foreground pull is real work on
+       a phone with a full deck. */
     var out = bridge.get();
-    if (out && out !== ns && score(out) > score(ns)) backupWrite(out, "replaced");
+    if (out && out !== ns && score(out) > score(ns)) snapTake(out, "replaced");
     applying = true;
     bridge.set(ns);
     bridge.persist();      // raw save — no timestamp bump, no echo push
@@ -314,7 +350,7 @@
     doPush(pending);
   }
 
-  function doPush(state) {
+  function doPush(state, again) {
     if (!client || !session) return;
     /* Never write before this session has read the row. A sign-in whose pull
        failed (a phone on a bad connection is the ordinary case) leaves an
@@ -327,15 +363,65 @@
     // A push queued before a sign-out must not land in whoever signs in next.
     if (state && state._uid !== session.user.id) return;
     setStatus("Saving…");
-    client.from("progress")
+    /* A write replaces the whole row, so it has to know it isn't standing on
+       something newer. Two phones used offline on the same afternoon both
+       pushed blind, and whichever synced second simply erased the other's
+       work — the merge on *pull* never saw it, because it had already gone.
+       One small read of the timestamp column settles it: if the row moved
+       since we last looked, pull and merge first, and that merge is what gets
+       written. `again` stops a busy row from bouncing this back and forth. */
+    client.from("progress").select("updated_at").eq("user_id", session.user.id).maybeSingle()
+      .then(function (res) {
+        if (res.error) throw res.error;
+        var now = res.data ? res.data.updated_at : null;
+        if (!again && now !== serverTs) return syncUserData();
+        return writeRow(state);
+      })
+      .catch(function () { pushFailed(state); });
+  }
+
+  function writeRow(state) {
+    return client.from("progress")
       .upsert({
         user_id: session.user.id,
         data: state,
         updated_at: new Date(tsOf(state) || Date.now()).toISOString()
       }, { onConflict: "user_id" })
-      .then(function (res) { setStatus(res.error ? "Sync error" : "Synced · " + clock()); })
-      .catch(function () { setStatus("Offline — will sync later"); });
+      // Read the stamp back rather than assuming ours: it is what the next
+      // push compares against, so it has to be the server's own wording of it.
+      .select("updated_at").maybeSingle()
+      .then(function (res) {
+        if (res.error) { pushFailed(state); return; }
+        if (res.data && res.data.updated_at) serverTs = res.data.updated_at;
+        pushDone(state);
+      });
   }
+
+  /* A push is not finished when it is sent, it is finished when the server
+     says so. Until then the state stays `dirty` and is retried — backing off,
+     but never giving up — because "saved" was previously assumed the moment
+     the request left, and a phone on a train quietly stopped syncing for the
+     rest of the day. */
+  var dirty = null, retryTimer = null, retryWait = 0, snapDay = 0;
+  var RETRY_MIN = 5000, RETRY_MAX = 300000;
+
+  function pushDone(state) {
+    if (dirty === state) dirty = null;
+    retryWait = 0;
+    if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+    setStatus("Synced · " + clock());
+    // One snapshot a day, taken at a moment we know the state is sound.
+    var d = Math.floor(Date.now() / 86400000);
+    if (d !== snapDay) { snapDay = d; snapTake(state, "daily"); }
+  }
+  function pushFailed(state) {
+    dirty = state;
+    setStatus("Offline — will sync later");
+    if (retryTimer) return;
+    retryWait = Math.min(RETRY_MAX, retryWait ? retryWait * 2 : RETRY_MIN);
+    retryTimer = setTimeout(function () { retryTimer = null; retryPush(); }, retryWait);
+  }
+  function retryPush() { if (dirty) doPush(dirty); }
 
   /* ------------------------ login screen ---------------------- */
 
@@ -472,7 +558,7 @@
         '<button class="btn outline block" data-sync="pw">Mudar palavra-passe · change password</button>' +
         '<button class="btn outline block" data-sync="signout">Terminar sessão · sign out</button>' +
       '</div>' +
-      backupOffer() +
+      snapOffer() +
       '<div id="acctIO"></div>' +
       '<div class="stack mt">' +
         '<button class="btn outline block danger" data-sync="delete">Apagar a conta · delete account</button>' +
@@ -481,18 +567,23 @@
     var io = el.querySelector("#acctIO");
     each(el, '[data-sync="pull"]', "click", function () { if (session) pullQuiet(); });
     each(el, '[data-sync="signout"]', "click", function () {
-      client.auth.signOut();   // SIGNED_OUT → backup + resetLocal + login screen
+      client.auth.signOut();   // SIGNED_OUT → snapshot + resetLocal + login screen
     });
     each(el, '[data-sync="restore"]', "click", function () {
-      var b = backupRead();
-      if (!b) return;
-      backupClear();
-      b.state._uid = session.user.id;
-      // Asked for by hand, so it wins: stamped now, it beats whatever any
-      // other device has, instead of being pulled back over on the next sync.
-      b.state._updatedAt = Date.now();
-      applyState(b.state);        // the state being replaced becomes the new backup
-      doPush(b.state);
+      var day = Number(this.getAttribute("data-day"));
+      var list = snapsRead(), pick = null;
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].day === day && (list[i].uid === session.user.id || list[i].uid === null)) pick = list[i];
+      }
+      if (!pick) return;
+      /* Merged in rather than swapped in, so going back to an earlier day adds
+         what that day had and takes nothing away — restoring can't become the
+         next way to lose something. Stamped now so it survives the next pull. */
+      var next = mergeStates(bridge.get(), pick.state);
+      next._uid = session.user.id;
+      next._updatedAt = Date.now();
+      applyState(next);
+      doPush(next);
       if (bridge && bridge.refresh) bridge.refresh();
       else renderAccountPanel();
     });
@@ -529,23 +620,26 @@
     });
   }
 
-  /* The device's own copy of the last progress it held, offered back whenever
-     it isn't the one currently loaded. Automatic recovery already handles the
-     ordinary sign-out case; this is for when the automatic answer was the
-     wrong one, and it means "I lost everything" always has a button. */
-  function backupOffer() {
+  /* This device's own history of the account, listed so it can be put back by
+     hand. The merge means it should never be needed — which is not the same as
+     it not being worth having, and "I've lost everything" should always have a
+     button rather than an explanation. */
+  function snapOffer() {
     if (!session || !bridge) return "";
-    var b = backupRead();
-    if (!b || b.uid !== session.user.id) return "";
-    var cur = bridge.get();
-    if (tsOf(b.state) === tsOf(cur)) return "";
-    var n = Object.keys(b.state.prog || {}).length;
+    var cur = bridge.get(), here = score(cur);
+    var list = snapsRead().filter(function (s) {
+      return (s.uid === session.user.id || s.uid === null) && score(s.state) > here;
+    });
+    if (!list.length) return "";
     return '<div class="acctbox" style="margin-top:14px">' +
-      "Este telemóvel guardou uma cópia do progresso em <strong>" + esc(when(b.at)) + "</strong> — " +
-      n + " cartões. Se o que vês agora não é o teu progresso, repõe essa cópia." +
-      '<span lang="en"><br>This device kept a copy of your progress from ' + esc(when(b.at)) +
-      " (" + n + " cards). If what you're seeing now isn't yours, restore it.</span>" +
-      '<button class="btn block mt" data-sync="restore">Repor essa cópia · restore that copy</button></div>';
+      "Este aparelho guarda uma cópia do teu progresso por dia. Se falta alguma coisa, repõe uma — " +
+      "juntam-se ao que já tens, não substituem." +
+      '<span lang="en"><br>This device keeps one copy of your progress per day. If something is ' +
+      "missing, restore one — they merge with what you have rather than replacing it.</span>" +
+      list.map(function (s) {
+        return '<button class="btn block mt" data-sync="restore" data-day="' + s.day + '">' +
+          esc(when(s.at)) + " · " + Object.keys(s.state.prog || {}).length + " cartões</button>";
+      }).join("") + "</div>";
   }
 
   // Removes the user's synced data, then asks the server to remove the login

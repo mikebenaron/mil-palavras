@@ -418,41 +418,77 @@ on `visibilitychange`/focus/reconnect (throttled 20s, skipped while
 `bridge.busy()` i.e. mid-session), and via the manual button. `bridge.refresh()`
 redraws the current screen via `LAST_RENDER` instead of navigating home.
 
-### Signing out must not be able to lose anything
+### Sync cannot subtract
 
-Sign-out wipes the device's only copy of the progress, and sign-in overwrites
-whatever is left with the server row. Both are destructive, both were
-unconditional, and together they lost a user's deck. Four rules now hold the
-line, all of them exercised by `node tools/sync-check.mjs`:
+It used to. Sign-out wiped the device's only copy of the progress, sign-in
+replaced whatever was left with the server row, and whichever copy carried the
+newer clock won outright — so a phone three days ahead of the server, signed
+out and back in, lost the three days. That was reported as "I lost seven days
+of progress", and it was the design working as written.
 
-- **`doPush` refuses to write before this session has read the row** (`synced`).
-  A sign-in whose pull failed — an ordinary phone on an ordinary connection —
-  used to leave an empty state on screen, and the next answered card uploaded
-  that emptiness with a fresh timestamp. Last-write-wins then made it
-  permanent. This is the rule that turns a scare into a non-event; without it
-  the harness watches a 40-card account become a 3-card one for good.
+**`mergeState(a, b)` in index.html replaced last-write-wins.** It lives with
+the app because the app owns the shape of the state; `sync.js` reaches it
+through `bridge.merge` and falls back to "whichever has more" if an older
+cached index.html doesn't provide one. The rules follow from what each field
+is: progress **unions** (a card both copies know keeps the record with the more
+recent review behind it — never a blend, since averaging one copy's FSRS
+stability with the other's describes a card neither device ever saw); counters
+that only count up take the **larger**; settings, the screen you were on and
+today's generated text are choices rather than records, so they come **whole**
+from the more recent copy. `progSeen()` is what "more recent review" means:
+`lr`, or `d - iv` for a card untouched since before FSRS — never `d`, because a
+lapse pulls the due date back to today and would make the copy that had
+forgotten the word look like the stale one.
+
+Deletion is the one thing a union can't express, so **"Apagar tudo" stamps
+`wipedAt`** and a wipe newer than everything the other copy knows wins
+outright. Without it the next pull would helpfully undo the erase.
+
+Around that:
+
+- **`syncUserData` merges three copies** — the server row, this device's live
+  state, and this device's own snapshot of the account. The five branches that
+  used to decide which one *wins* are gone; the only judgement left is whether
+  a copy belongs to this account at all, because another person's deck on a
+  shared device must not be merged into yours (it is snapshotted instead).
+- **A write checks the row hasn't moved under it.** An upsert replaces the
+  whole row, so the merge-on-pull never saw what a blind write had already
+  destroyed: two phones used offline on the same afternoon, and whichever
+  synced second erased the other. `doPush` reads the `updated_at` column
+  first — if it isn't the value we last saw, it pulls and merges and writes
+  *that*. The stamp is read back from the upsert rather than assumed, so the
+  comparison is always against the server's own wording of it.
+- **`doPush` refuses to write before this session has read the row**
+  (`synced`). A sign-in whose pull failed used to leave an empty state on
+  screen, and the next answered card uploaded that emptiness. Without this
+  line the harness watches a 40-card account become a 3-card one for good.
+- **A push isn't done when it's sent, it's done when the server says so.**
+  Failures stay `dirty` and retry with backoff, and reconnecting retries too.
 - **The debounce is flushed on `visibilitychange`→hidden and `pagehide`.** 1.2s
   is longer than it takes to close a PWA, so the last card of every session was
-  routinely never pushed, and the server sat quietly behind the phone.
-- **Nothing is replaced without a copy** (`milpalavras.backup`, one slot, the
-  most recent non-empty state and the uid it belonged to). Sign-out writes it;
-  so does any pull that would replace local progress with *less*. On the next
-  sign-in a backup for the same account that is newer than the server row wins
-  and is pushed. It also survives a `SIGNED_OUT` the user never asked for —
-  supabase-js emits one when a refresh token finally expires.
+  routinely never sent.
+- **The device keeps its own history** — `milpalavras.snaps`, one snapshot per
+  account per day, newest first, capped at a fortnight *and* a byte budget
+  because a full deck is 1.3MB. Signing out writes one and never clears them;
+  that is the whole point of them. Definições lists any that hold more than
+  what's loaded, and restoring **merges** rather than replaces, so recovery
+  can't become the next way to lose something.
 - **A queued push cannot land in the next account's row** — `doPush` compares
   `state._uid` with the current session, and sign-out drops the pending state.
 
-Signing in with an empty deck and no server answer shows "não foi possível ler
-o teu progresso" with a retry, rather than an empty app that looks like loss.
-Definições offers the backup back by hand whenever it differs from what's
-loaded; restoring stamps it `now` so it wins the next sync instead of being
-pulled back over.
+Signing in with an empty deck and no answer from the server says so and offers
+a retry, instead of an empty app that reads as loss.
 
 ```bash
-node tools/sync-check.mjs            # 13 checks against a fake Supabase
+node tools/sync-check.mjs            # 32 checks: mergeState, then sync.js driven by hand
 node tools/sync-check.mjs old.js     # run a suspect build through the same cases
 ```
+
+The harness lifts the real `mergeState` out of index.html between its
+`===== mergeState` sentinels and runs the real `sync.js` in a `vm` sandbox
+against a fake Supabase — the trick `tools/conj-check.mjs` uses. **Don't rename
+those sentinels.** Against the release that lost the progress, ten of the
+thirty-two fail.
 
 ## Deploying
 
