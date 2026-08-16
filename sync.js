@@ -33,8 +33,41 @@
   var session = null;
   var applying = false;    // true while writing a pulled/loaded state (suppresses echo push)
   var pushTimer = null;
+  var pending = null;      // the state a debounced push is holding, so it can be flushed
+  var synced = false;      // true once this session has actually READ the server row
   var status = "";
   var listening = false;
+
+  /* ------------------- local backup of last progress -------------------
+     Signing out replaces the device's only copy of the progress with an
+     empty state, and that is fine exactly as long as the server row is
+     current — which is not something the app was in a position to promise.
+     So nothing is ever overwritten now without a copy being kept first:
+     one slot, holding the most recent non-empty state and the account it
+     belonged to. It is what makes sign-out survivable. */
+  var BACKUP_KEY = "milpalavras.backup";
+
+  function backupRead() {
+    try {
+      var raw = window.localStorage.getItem(BACKUP_KEY);
+      var b = raw ? JSON.parse(raw) : null;
+      return b && b.state && b.state.prog ? b : null;
+    } catch (e) { return null; }
+  }
+  function backupWrite(state, why) {
+    if (!state || score(state) === 0) return;          // never let an empty state clobber a real backup
+    var prev = backupRead();
+    // Timestamps only ever move forward, so an older copy never displaces a newer one.
+    if (prev && prev.uid === (state._uid || null) && tsOf(prev.state) >= tsOf(state)) return;
+    try {
+      window.localStorage.setItem(BACKUP_KEY, JSON.stringify({
+        at: Date.now(), why: why || "", uid: state._uid || null, state: state
+      }));
+    } catch (e) { /* quota — the sign-out must still work */ }
+  }
+  function backupClear() {
+    try { window.localStorage.removeItem(BACKUP_KEY); } catch (e) {}
+  }
 
   var BADGE =
     "<svg viewBox='0 0 32 32' xmlns='http://www.w3.org/2000/svg'>" +
@@ -83,12 +116,20 @@
       if (session && bridge) doPush(bridge.get());
       maybePull();
     });
-    document.addEventListener("visibilitychange", maybePull);
+    document.addEventListener("visibilitychange", function () {
+      // Going away is the last chance to send: a push is debounced 1.2s, and a
+      // phone that closes the app right after the final card of a session used
+      // to freeze the page with that timer still pending, so the server never
+      // heard about the last thing studied. Flush first, then consider pulling.
+      if (document.hidden) flushPush();
+      else maybePull();
+    });
+    window.addEventListener("pagehide", flushPush);
     window.addEventListener("focus", maybePull);
     client.auth.onAuthStateChange(function (evt, s) {
       session = s || null;
       if (evt === "SIGNED_IN") enterApp();
-      else if (evt === "SIGNED_OUT") { resetLocal(); renderLogin("signin"); }
+      else if (evt === "SIGNED_OUT") signedOut();
       else if (evt === "PASSWORD_RECOVERY") renderSetPassword();
       // INITIAL_SESSION / TOKEN_REFRESHED / USER_UPDATED: no UI change needed
     });
@@ -96,15 +137,58 @@
 
   /* ------------------------- app entry ------------------------ */
 
+  /* Sign-out is destructive by design — the next person to sign in on this
+     device must not inherit someone else's deck. What it must not do is throw
+     the only copy away: keep a backup, drop any half-sent push, and forget
+     that we ever read the server, so the next sign-in has to read it again
+     before it is allowed to write. SIGNED_OUT also fires on its own when a
+     refresh token finally expires, which is a wipe nobody asked for. */
+  function signedOut() {
+    if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
+    pending = null;
+    synced = false;
+    if (bridge) backupWrite(bridge.get(), "signout");
+    resetLocal();
+    renderLogin("signin");
+  }
+
   function enterApp() {
     setStatus("Syncing…");
     lastPull = Date.now();   // this counts as a pull; don't repeat it on first focus
     var p;
     try { p = syncUserData(); } catch (e) { p = Promise.reject(e); }
     Promise.resolve(p)
-      .then(function () { setStatus("Synced · " + clock()); })
-      .catch(function () { /* offline / error — fall back to the local cache */ })
-      .then(function () { bridge.render(); });   // always enter the app
+      .then(function () { setStatus("Synced · " + clock()); bridge.render(); })
+      .catch(function () {
+        /* Offline with progress already on the device is the ordinary case:
+           enter the app and sync later. Offline with *nothing* on the device
+           is not — showing an empty deck to someone with an account is the
+           app claiming their progress is gone when it has simply not looked.
+           Say so instead, and let them retry. Nothing can be pushed until a
+           read succeeds, so the server row is safe either way. */
+        setStatus("Offline — will sync later");
+        if (score(bridge.get()) > 0) { bridge.render(); return; }
+        renderUnreachable();
+      });
+  }
+
+  // Signed in, but the progress for this account could not be read.
+  function renderUnreachable() {
+    var root = document.getElementById("app");
+    root.className = "";
+    root.innerHTML =
+      '<div class="auth-wrap"><div class="auth-inner">' +
+        '<div class="auth-brand"><div class="auth-wm">Mil Palavras</div>' +
+          '<div class="auth-eyebrow">Sem ligação · offline</div></div>' +
+        '<div class="auth-status">Não foi possível ler o teu progresso — a ligação falhou. ' +
+          'O teu progresso está guardado na tua conta; não se perdeu.' +
+          '<span lang="en"><br><br>Couldn\'t load your progress — the connection failed. ' +
+          "Your progress is safe in your account; nothing has been lost.</span></div>" +
+        '<button class="btn fill block auth-primary" data-act="retry">Tentar outra vez · try again</button>' +
+        '<button class="auth-link" data-act="anyway">Continuar offline · continue offline</button>' +
+      '</div></div>';
+    root.querySelector('[data-act="retry"]').addEventListener("click", enterApp);
+    root.querySelector('[data-act="anyway"]').addEventListener("click", function () { bridge.render(); });
   }
 
   // Refresh from the server without navigating. Used by "Sync now" and by the
@@ -150,9 +234,25 @@
     return client.from("progress").select("data").eq("user_id", U).maybeSingle()
       .then(function (res) {
         if (res.error) throw res.error;
+        // We have now read the server, so writing to it can no longer destroy
+        // something we never saw. Nothing before this line may push.
+        synced = true;
         var remote = res.data ? res.data.data : null;
         var local = bridge.get();
         var localIsThisUser = local && local._uid === U;
+
+        // Work this account did on this device that never reached the server —
+        // most likely because signing out wiped it before the last push landed.
+        // Same last-write-wins rule as everywhere else, so a genuinely newer
+        // row written by another device still takes precedence.
+        var back = backupRead();
+        if (back && back.uid === U && !localIsThisUser && tsOf(back.state) > tsOf(remote)) {
+          backupClear();
+          back.state._uid = U;
+          applyState(back.state);
+          doPush(back.state);
+          return;
+        }
 
         if (remote) {
           if (localIsThisUser) {
@@ -183,6 +283,10 @@
   }
 
   function applyState(ns) {
+    // If what's being replaced holds more progress than what's arriving, keep
+    // a copy of it — the device is the only place that work still exists.
+    var out = bridge.get();
+    if (out && out !== ns && score(out) > score(ns)) backupWrite(out, "replaced");
     applying = true;
     bridge.set(ns);
     bridge.persist();      // raw save — no timestamp bump, no echo push
@@ -196,13 +300,32 @@
   /* --------------------------- push --------------------------- */
 
   function schedulePush(state) {
+    pending = state;
     if (pushTimer) clearTimeout(pushTimer);
-    pushTimer = setTimeout(function () { doPush(state); }, 1200);
+    pushTimer = setTimeout(function () { pushTimer = null; doPush(pending); }, 1200);
+  }
+
+  // Send a debounced push right now — used when the page is about to be hidden
+  // or torn down, where the timer would otherwise never get to fire.
+  function flushPush() {
+    if (!pushTimer) return;
+    clearTimeout(pushTimer);
+    pushTimer = null;
+    doPush(pending);
   }
 
   function doPush(state) {
     if (!client || !session) return;
+    /* Never write before this session has read the row. A sign-in whose pull
+       failed (a phone on a bad connection is the ordinary case) leaves an
+       empty state on screen; without this guard the next answered card
+       uploaded that emptiness over the real progress, with a fresh timestamp,
+       and last-write-wins made it permanent. Offline work is still saved
+       locally and goes up once a pull has actually succeeded. */
+    if (!synced) return;
     if (state && !state._uid) state._uid = session.user.id;
+    // A push queued before a sign-out must not land in whoever signs in next.
+    if (state && state._uid !== session.user.id) return;
     setStatus("Saving…");
     client.from("progress")
       .upsert({
@@ -349,6 +472,7 @@
         '<button class="btn outline block" data-sync="pw">Mudar palavra-passe · change password</button>' +
         '<button class="btn outline block" data-sync="signout">Terminar sessão · sign out</button>' +
       '</div>' +
+      backupOffer() +
       '<div id="acctIO"></div>' +
       '<div class="stack mt">' +
         '<button class="btn outline block danger" data-sync="delete">Apagar a conta · delete account</button>' +
@@ -357,7 +481,20 @@
     var io = el.querySelector("#acctIO");
     each(el, '[data-sync="pull"]', "click", function () { if (session) pullQuiet(); });
     each(el, '[data-sync="signout"]', "click", function () {
-      client.auth.signOut();   // SIGNED_OUT → resetLocal + login screen
+      client.auth.signOut();   // SIGNED_OUT → backup + resetLocal + login screen
+    });
+    each(el, '[data-sync="restore"]', "click", function () {
+      var b = backupRead();
+      if (!b) return;
+      backupClear();
+      b.state._uid = session.user.id;
+      // Asked for by hand, so it wins: stamped now, it beats whatever any
+      // other device has, instead of being pulled back over on the next sync.
+      b.state._updatedAt = Date.now();
+      applyState(b.state);        // the state being replaced becomes the new backup
+      doPush(b.state);
+      if (bridge && bridge.refresh) bridge.refresh();
+      else renderAccountPanel();
     });
 
     each(el, '[data-sync="pw"]', "click", function () {
@@ -390,6 +527,25 @@
         'This deletes your account and all saved progress. This cannot be undone. ' +
         'Tap <em>Delete account</em> once more to confirm.</div>';
     });
+  }
+
+  /* The device's own copy of the last progress it held, offered back whenever
+     it isn't the one currently loaded. Automatic recovery already handles the
+     ordinary sign-out case; this is for when the automatic answer was the
+     wrong one, and it means "I lost everything" always has a button. */
+  function backupOffer() {
+    if (!session || !bridge) return "";
+    var b = backupRead();
+    if (!b || b.uid !== session.user.id) return "";
+    var cur = bridge.get();
+    if (tsOf(b.state) === tsOf(cur)) return "";
+    var n = Object.keys(b.state.prog || {}).length;
+    return '<div class="acctbox" style="margin-top:14px">' +
+      "Este telemóvel guardou uma cópia do progresso em <strong>" + esc(when(b.at)) + "</strong> — " +
+      n + " cartões. Se o que vês agora não é o teu progresso, repõe essa cópia." +
+      '<span lang="en"><br>This device kept a copy of your progress from ' + esc(when(b.at)) +
+      " (" + n + " cards). If what you're seeing now isn't yours, restore it.</span>" +
+      '<button class="btn block mt" data-sync="restore">Repor essa cópia · restore that copy</button></div>';
   }
 
   // Removes the user's synced data, then asks the server to remove the login
@@ -426,6 +582,11 @@
   function setStatus(s) { status = s; var e = document.getElementById("syncStatus"); if (e) e.textContent = s; }
   function hint(html) { return '<div class="hint" style="font-size:11.5px;color:var(--slate)">' + html + "</div>"; }
   function clock() { var d = new Date(); return ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2); }
+  function when(ts) {
+    var d = new Date(ts || 0);
+    return ("0" + d.getDate()).slice(-2) + "/" + ("0" + (d.getMonth() + 1)).slice(-2) +
+      " · " + ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
+  }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function each(root, sel, ev, fn) { var n = root.querySelectorAll(sel); for (var i = 0; i < n.length; i++) n[i].addEventListener(ev, fn); }
 

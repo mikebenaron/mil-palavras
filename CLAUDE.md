@@ -418,6 +418,42 @@ on `visibilitychange`/focus/reconnect (throttled 20s, skipped while
 `bridge.busy()` i.e. mid-session), and via the manual button. `bridge.refresh()`
 redraws the current screen via `LAST_RENDER` instead of navigating home.
 
+### Signing out must not be able to lose anything
+
+Sign-out wipes the device's only copy of the progress, and sign-in overwrites
+whatever is left with the server row. Both are destructive, both were
+unconditional, and together they lost a user's deck. Four rules now hold the
+line, all of them exercised by `node tools/sync-check.mjs`:
+
+- **`doPush` refuses to write before this session has read the row** (`synced`).
+  A sign-in whose pull failed — an ordinary phone on an ordinary connection —
+  used to leave an empty state on screen, and the next answered card uploaded
+  that emptiness with a fresh timestamp. Last-write-wins then made it
+  permanent. This is the rule that turns a scare into a non-event; without it
+  the harness watches a 40-card account become a 3-card one for good.
+- **The debounce is flushed on `visibilitychange`→hidden and `pagehide`.** 1.2s
+  is longer than it takes to close a PWA, so the last card of every session was
+  routinely never pushed, and the server sat quietly behind the phone.
+- **Nothing is replaced without a copy** (`milpalavras.backup`, one slot, the
+  most recent non-empty state and the uid it belonged to). Sign-out writes it;
+  so does any pull that would replace local progress with *less*. On the next
+  sign-in a backup for the same account that is newer than the server row wins
+  and is pushed. It also survives a `SIGNED_OUT` the user never asked for —
+  supabase-js emits one when a refresh token finally expires.
+- **A queued push cannot land in the next account's row** — `doPush` compares
+  `state._uid` with the current session, and sign-out drops the pending state.
+
+Signing in with an empty deck and no server answer shows "não foi possível ler
+o teu progresso" with a retry, rather than an empty app that looks like loss.
+Definições offers the backup back by hand whenever it differs from what's
+loaded; restoring stamps it `now` so it wins the next sync instead of being
+pulled back over.
+
+```bash
+node tools/sync-check.mjs            # 13 checks against a fake Supabase
+node tools/sync-check.mjs old.js     # run a suspect build through the same cases
+```
+
 ## Deploying
 
 Commit and push to `main`; GitHub Pages rebuilds. Verify with:
