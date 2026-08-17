@@ -410,17 +410,26 @@
       .catch(function (e) { pushFailed(state, e); });
   }
 
+  /* The row carries a timestamp column, and the whole write-guard is built on
+     it — but the progress itself matters more than the guard does. A write
+     rejected because of that column is retried without it rather than allowed
+     to fail, because a push that silently never lands is how a server row ends
+     up days behind the phone, which is how the days were lost in the first
+     place. `stamped` remembers the answer for the rest of the session. */
+  var stamped = true;
   function writeRow(state) {
+    var row = { user_id: session.user.id, data: state };
+    if (stamped) row.updated_at = new Date(tsOf(state) || Date.now()).toISOString();
     return client.from("progress")
-      .upsert({
-        user_id: session.user.id,
-        data: state,
-        updated_at: new Date(tsOf(state) || Date.now()).toISOString()
-      }, { onConflict: "user_id" })
+      .upsert(row, { onConflict: "user_id" })
       // Read the stamp back rather than assuming ours: it is what the next
       // push compares against, so it has to be the server's own wording of it.
       .select("*").maybeSingle()
       .then(function (res) {
+        if (res.error && stamped && /updated_at/.test(res.error.message || "")) {
+          stamped = false;
+          return writeRow(state);
+        }
         if (res.error) { pushFailed(state, res.error); return; }
         serverTs = (res.data && res.data.updated_at) || null;
         pushDone(state);

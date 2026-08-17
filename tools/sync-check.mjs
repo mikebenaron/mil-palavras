@@ -190,7 +190,9 @@ function boot(opts) {
          once however it is awaited. */
       upsert: r => {
         let done = null;
-        const run = () => (done = done || (net.write
+        const run = () => (done = done || (opts.noStamp && "updated_at" in r
+          ? { data: null, error: { message: "column \"updated_at\" of relation \"progress\" does not exist" } }
+          : net.write
           ? (rows[r.user_id] = { data: JSON.parse(JSON.stringify(r.data)), updated_at: r.updated_at },
              { data: { updated_at: r.updated_at }, error: null })
           : { data: null, error: new Error("offline") }));
@@ -381,7 +383,22 @@ function boot(opts) {
     t.snaps().some(s => s.uid === U1 && cards(s.state) === 3));
 }
 
-/* 8. A wipe on one device must reach the other, and stay wiped. */
+/* 8. A table whose row has no updated_at column. The write-guard is built on
+      that stamp, but the progress matters more than the guard: the push must
+      still land, because one that silently never lands is how the server ends
+      up days behind the phone. */
+{
+  const rows = { [U1]: row(stateOf(["a"], 1000, U1)) };
+  const t = boot({ rows, local: stateOf(["a"], 1000, U1), noStamp: true });
+  await t.start();
+  await t.signIn(U1);
+  await t.study(["b", "c"]);
+  await t.hide();
+  check("a write still lands on a table with no updated_at column",
+    cards(srv(rows, U1)) === 3, cards(srv(rows, U1)) + " cards");
+}
+
+/* 9. A wipe on one device must reach the other, and stay wiped. */
 {
   const rows = { [U1]: row(stateOf(["a", "b", "c"], 1000, U1)) };
   const t = boot({ rows, local: stateOf(["a", "b", "c"], 1000, U1) });
@@ -403,4 +420,6 @@ function boot(opts) {
 const bad = results.filter(r => !r.ok);
 console.log(`sync (${path.relative(ROOT, FILE) || FILE}): ${results.length - bad.length} pass, ${bad.length} fail`);
 for (const r of results) console.log(`  ${r.ok ? "✓" : "✗"} ${r.name}${r.detail ? "  — " + r.detail : ""}`);
-process.exitCode = bad.length ? 1 : 0;
+/* Exit rather than fall off the end: a scenario that leaves a push retrying
+   has a backoff timer pending, and node would sit waiting on it. */
+process.exit(bad.length ? 1 : 0);
