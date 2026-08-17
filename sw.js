@@ -1,6 +1,6 @@
 /* Mil Palavras service worker — offline app shell.
    Bump CACHE_VERSION whenever the app files change to force an update. */
-const CACHE_VERSION = 'mil-palavras-v78';
+const CACHE_VERSION = 'mil-palavras-v79';
 /* Audio lives in its own cache, deliberately NOT tied to CACHE_VERSION.
    The clips never change, they are ~82MB, and a user may have chosen to
    download all of them — wiping that on every app update (a CSS tweak!)
@@ -18,17 +18,17 @@ const APP_SHELL = [
   // network-first (always fresh) while these are cache-first, so without the
   // ?v= a new document could run against last release's scripts — which is
   // exactly how a signed-in user got told to sign in.
-  './vendor/supabase.js?v=78',
-  './sync-config.js?v=78',
-  './sync.js?v=78',
-  './content.js?v=78',
-  './families.js?v=78',
-  './readings.js?v=78',
+  './vendor/supabase.js?v=79',
+  './sync-config.js?v=79',
+  './sync.js?v=79',
+  './content.js?v=79',
+  './families.js?v=79',
+  './readings.js?v=79',
   // Versioned like the rest: cache.addAll() fetches through the browser's own
   // HTTP cache, so an unversioned manifest could be precached stale — and a
   // stale manifest means the app believes audio it has doesn't exist.
-  './audio/manifest.json?v=78',
-  './fonts.css?v=78'
+  './audio/manifest.json?v=79',
+  './fonts.css?v=79'
 ];
 // Audio clips are NOT precached — ~20MB is far too much to force on install.
 // They are cached individually by the fetch handler as they're played, and a
@@ -61,6 +61,21 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
+
+  /* Never touch anything that isn't ours.
+
+     This handler re-fetches by URL, deliberately, so that the cache is keyed
+     without Safari's Range header. Rebuilding a request from its URL drops
+     every header it had — which is harmless for our own static files and
+     fatal for an API call: Supabase answers a GET carrying no `apikey` with
+     "No API key found in request".
+
+     So every pull the app has ever made failed, silently, and the app fell
+     back to the local copy — which is fine right up until the moment signing
+     out has just cleared it. Auth and the Edge Functions are POSTs and never
+     reached this line, which is why signing in worked while reading your own
+     progress did not. */
+  if (new URL(req.url).origin !== self.location.origin) return;
 
   // Never intercept the worker script itself. Caching it meant the in-app
   // update check read a stale version and concluded the app was current —

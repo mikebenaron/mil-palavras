@@ -146,6 +146,20 @@ Only cache responses that succeeded (`res.ok && status === 200`). Caching a 404
 once served it forever and broke the app until a version bump — that bug is
 fixed, don't reintroduce it.
 
+**The handler returns immediately for anything cross-origin, and that line is
+load-bearing.** It re-fetches by URL on purpose, so the audio cache is keyed
+without Safari's Range header — but a request rebuilt from its URL has lost
+every header it had. Applied to an API call that is fatal: Supabase answers a
+GET carrying no `apikey` with *"No API key found in request"*. Every pull the
+app ever made failed that way, silently, and the app fell back to the local
+copy — which is fine right up until signing out has just cleared it. Signing in
+kept working the whole time because auth is a POST and POSTs return at the
+first line, which is precisely why it took so long to see.
+
+```bash
+node tools/sw-check.mjs      # 9 checks: what the worker must serve, and what it must not touch
+```
+
 ## Pronunciation respellings
 
 CAPITALS = stressed syllable; single-syllable words stay lowercase.
