@@ -36,6 +36,7 @@
   var pending = null;      // the state a debounced push is holding, so it can be flushed
   var synced = false;      // true once this session has actually READ the server row
   var serverTs = null;     // the row's updated_at as the server last reported it
+  var lastError = null;    // whatever the server last complained about, shown rather than guessed at
   var status = "";
   var listening = false;
 
@@ -195,36 +196,65 @@
     try { p = syncUserData(); } catch (e) { p = Promise.reject(e); }
     Promise.resolve(p)
       .then(function () { setStatus("Synced · " + clock()); bridge.render(); })
-      .catch(function () {
+      .catch(function (err) {
         /* Offline with progress already on the device is the ordinary case:
            enter the app and sync later. Offline with *nothing* on the device
            is not — showing an empty deck to someone with an account is the
            app claiming their progress is gone when it has simply not looked.
-           Say so instead, and let them retry. Nothing can be pushed until a
-           read succeeds, so the server row is safe either way. */
+           Nothing can be pushed until a read succeeds, so the row is safe
+           whichever way this goes. */
+        lastError = err || lastError;
         setStatus("Offline — will sync later");
         if (score(bridge.get()) > 0) { bridge.render(); return; }
-        renderUnreachable();
+        // This device's own copy of the account beats a blank screen, and it
+        // cannot be uploaded over anything until a read has succeeded.
+        var kept = snapLatest(session.user.id);
+        if (kept && score(kept.state) > 0) {
+          kept.state._uid = session.user.id;
+          applyState(kept.state);
+          bridge.render();
+          return;
+        }
+        renderUnreachable(err);
       });
   }
 
-  // Signed in, but the progress for this account could not be read.
-  function renderUnreachable() {
+  /* Signed in, but the progress for this account could not be read. What went
+     wrong is printed rather than guessed at: this screen replaced one that
+     entered the app with an empty deck, which is the same failure wearing the
+     words "you have no progress". A wrong diagnosis on it would be no better. */
+  function renderUnreachable(err) {
     var root = document.getElementById("app");
+    clearShell();
     root.className = "";
     root.innerHTML =
       '<div class="auth-wrap"><div class="auth-inner">' +
         '<div class="auth-brand"><div class="auth-wm">Mil Palavras</div>' +
           '<div class="auth-eyebrow">Sem ligação · offline</div></div>' +
-        '<div class="auth-status">Não foi possível ler o teu progresso — a ligação falhou. ' +
-          'O teu progresso está guardado na tua conta; não se perdeu.' +
-          '<span lang="en"><br><br>Couldn\'t load your progress — the connection failed. ' +
-          "Your progress is safe in your account; nothing has been lost.</span></div>" +
+        '<div class="auth-status">Não foi possível ler o teu progresso. ' +
+          'Está guardado na tua conta e não foi apagado — esta ligação é que falhou.' +
+          '<span lang="en"><br><br>Couldn\'t read your progress. It is stored in your ' +
+          "account and has not been deleted — it is this connection that failed.</span></div>" +
         '<button class="btn fill block auth-primary" data-act="retry">Tentar outra vez · try again</button>' +
         '<button class="auth-link" data-act="anyway">Continuar offline · continue offline</button>' +
+        errLine(err) +
       '</div></div>';
     root.querySelector('[data-act="retry"]').addEventListener("click", enterApp);
     root.querySelector('[data-act="anyway"]').addEventListener("click", function () { bridge.render(); });
+  }
+  function errLine(err) {
+    if (!err) return "";
+    var bits = [err.message || String(err), err.code, err.hint, err.details]
+      .filter(Boolean).join(" · ");
+    return '<div class="auth-note" style="text-align:center;margin-top:22px;opacity:.75">' +
+      esc(bits) + "</div>";
+  }
+  /* The tab bar lives outside #app, so replacing #app leaves it on screen —
+     five destinations offered by a screen that has none. */
+  function clearShell() {
+    var host = document.getElementById("tabhost");
+    if (host) host.innerHTML = "";
+    try { document.body.classList.remove("hastabs"); } catch (e) {}
   }
 
   // Refresh from the server without navigating. Used by "Sync now" and by the
@@ -275,13 +305,13 @@
      all. Another person's deck on a shared device is not merged into yours. */
   function syncUserData() {
     var U = session.user.id;
-    return client.from("progress").select("data, updated_at").eq("user_id", U).maybeSingle()
+    return client.from("progress").select("*").eq("user_id", U).maybeSingle()
       .then(function (res) {
         if (res.error) throw res.error;
         // We have now read the server, so writing to it can no longer destroy
         // something we never saw. Nothing before this line may push.
         synced = true;
-        serverTs = res.data ? res.data.updated_at : null;
+        serverTs = (res.data && res.data.updated_at) || null;
         var remote = res.data ? res.data.data : null;
         var local = bridge.get();
         // No _uid means progress made before this device ever signed in — it
@@ -370,14 +400,14 @@
        One small read of the timestamp column settles it: if the row moved
        since we last looked, pull and merge first, and that merge is what gets
        written. `again` stops a busy row from bouncing this back and forth. */
-    client.from("progress").select("updated_at").eq("user_id", session.user.id).maybeSingle()
+    client.from("progress").select("*").eq("user_id", session.user.id).maybeSingle()
       .then(function (res) {
         if (res.error) throw res.error;
-        var now = res.data ? res.data.updated_at : null;
+        var now = (res.data && res.data.updated_at) || null;
         if (!again && now !== serverTs) return syncUserData();
         return writeRow(state);
       })
-      .catch(function () { pushFailed(state); });
+      .catch(function (e) { pushFailed(state, e); });
   }
 
   function writeRow(state) {
@@ -389,10 +419,10 @@
       }, { onConflict: "user_id" })
       // Read the stamp back rather than assuming ours: it is what the next
       // push compares against, so it has to be the server's own wording of it.
-      .select("updated_at").maybeSingle()
+      .select("*").maybeSingle()
       .then(function (res) {
-        if (res.error) { pushFailed(state); return; }
-        if (res.data && res.data.updated_at) serverTs = res.data.updated_at;
+        if (res.error) { pushFailed(state, res.error); return; }
+        serverTs = (res.data && res.data.updated_at) || null;
         pushDone(state);
       });
   }
@@ -414,9 +444,10 @@
     var d = Math.floor(Date.now() / 86400000);
     if (d !== snapDay) { snapDay = d; snapTake(state, "daily"); }
   }
-  function pushFailed(state) {
+  function pushFailed(state, err) {
     dirty = state;
-    setStatus("Offline — will sync later");
+    lastError = err || lastError;
+    setStatus(err && err.message ? "Não guardou · " + err.message : "Offline — will sync later");
     if (retryTimer) return;
     retryWait = Math.min(RETRY_MAX, retryWait ? retryWait * 2 : RETRY_MIN);
     retryTimer = setTimeout(function () { retryTimer = null; retryPush(); }, retryWait);
@@ -429,6 +460,7 @@
     mode = mode || "signin";
     var signup = mode === "signup";
     var root = document.getElementById("app");
+    clearShell();
     root.className = "";
     root.innerHTML =
       '<div class="auth-wrap"><div class="auth-inner">' +
@@ -505,6 +537,7 @@
   // Shown when the user returns from a password-reset email.
   function renderSetPassword() {
     var root = document.getElementById("app");
+    clearShell();
     root.className = "";
     root.innerHTML =
       '<div class="auth-wrap"><div class="auth-inner">' +
@@ -551,6 +584,9 @@
       '<div class="acctrow"><div class="acctlabel">Sessão iniciada como · signed in as</div>' +
         '<div class="acctmail">' + esc(session.user.email || "your account") + '</div></div>' +
       '<div class="foot" style="text-align:left" id="syncStatus">' + esc(status || "Synced") + '</div>' +
+      (lastError ? '<div class="foot" style="text-align:left;opacity:.75">' +
+        esc([lastError.message || String(lastError), lastError.code, lastError.hint].filter(Boolean).join(" · ")) +
+        '</div>' : "") +
       hint("O progresso sincroniza sozinho — ao guardar, e sempre que voltas à aplicação. O botão abaixo é só para forçares. · " +
         "Progress syncs on its own: on every save, and whenever you return to the app. The button below is only to force it.") +
       '<div class="stack mt">' +
