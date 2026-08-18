@@ -283,6 +283,26 @@ arriving and did nothing about the hundreds already in rotation, which kept
 coming back for ever. `tenseOn(lvl)` and `tenseBlocked(card)` are the gate;
 `tlvl` survives only as the value the one-time migration reads.
 
+Every screen that builds a queue has to call `tenseBlocked()`, and forgetting
+is the failure mode: it was applied in `dueList()`, `newPool()`, `mixedPool()`
+and three deck rows, and forgotten in the Conjugações aggregates and the class
+decks — so switching B1 and B2 off in Definições still served them from
+Conjugações → *Tudo*. The rule is now: **a row that names a tense honours your
+choice to pick it; a row that names no tense honours your settings.** The
+predicate for each row is written once and used for both the number on the row
+and the queue behind it — they were written separately, which is how a row
+comes to promise one set and serve another.
+
+```bash
+node tools/ui-check.mjs      # 9 checks, in a real browser, through the real screens
+```
+
+That harness serves the working tree and drives it with `?dev=1`, asserting on
+`__MP__.SES` after clicking. It is the only test here that goes through the UI,
+and it exists because this class of bug is invisible from inside any single
+function: nothing was wrong with `tenseBlocked()`, only with who called it.
+It needs playwright and skips itself with a message if that isn't installed.
+
 Nothing is deleted. A rung switched off keeps its stability and its due dates,
 so switching it back on returns those cards exactly where they were — overdue,
 most likely, which is honest, because you did stop reviewing them. Every tense
