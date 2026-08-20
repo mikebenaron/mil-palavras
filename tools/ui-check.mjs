@@ -146,6 +146,135 @@ const back = await start("conj", '[data-drill="__all"]');
 check("switching them back on returns every tense", back && (back.byLevel[3] || back.byLevel[4]),
   JSON.stringify(back));
 
+/* ---------------------------------------------------------------------------
+   What a card actually teaches once it has been answered.
+
+   Every conjugation and grammar card has always carried its explanation in
+   `t`, and no screen rendered a word of it: a learner got a form, a verdict
+   and nothing else. These check the rendered markup rather than the state,
+   because the bug was never in the data — it was in who displayed it.
+   --------------------------------------------------------------------------- */
+
+/* Force one specific card into a one-card session in a given mode. */
+const cardScreen = (id, mode) => page.evaluate(([cid, m]) => {
+  const M = window.__MP__;
+  const card = M.BY_ID[cid] || M.CARDS.filter((c) => String(c.i) === cid)[0];
+  M.SES = { mode: m, q: [card], i: 0, done: 0, total: 1, right: 0, wrong: 0, near: 0,
+            shown: false, dir: "en", opts: null, answered: false, chosen: null,
+            typed: "", verdict: null, missed: [] };
+  M.renderSession();
+  return !!card;
+}, [id, mode]);
+
+const reveal = () => page.evaluate(() => {
+  window.__MP__.SES.shown = true;
+  window.__MP__.SES.answered = true;
+  window.__MP__.renderSession();
+  return document.getElementById("app").innerText;
+});
+
+/* A conjugation card: the tense gloss on the front, the worked example and
+   the "when" on the back. */
+if (await cardScreen("c|dizer|im|3", "review")) {
+  const front = await page.evaluate(() => document.getElementById("app").innerText);
+  check("a conjugation card says what the tense is FOR, on the front",
+    /what used to happen/i.test(front), front.split("\n").slice(0, 6).join(" / "));
+  const back = await reveal();
+  check("and shows the form in a sentence once answered",
+    /Antigamente dizíamos sempre assim/.test(back),
+    (back.split("\n").filter((l) => /assim/.test(l))[0] || "(no frame line)"));
+  check("with the English of that frame",
+    /Back then we always/i.test(back));
+  check("and what the tense is used for",
+    /background of a past scene/i.test(back));
+}
+
+/* Escolha is a different renderer, and "in all modes" was the report. */
+if (await cardScreen("c|dizer|im|3", "choice")) {
+  const back = await reveal();
+  check("Escolha teaches the same thing",
+    /Antigamente dizíamos sempre assim/.test(back) && /background of a past scene/i.test(back),
+    (back.split("\n").filter((l) => /assim/.test(l))[0] || "(no frame line)"));
+}
+
+/* The grammar cloze that started this: unanswerable without its English. */
+if (await cardScreen("g|ctc1", "choice")) {
+  const front = await page.evaluate(() => document.getElementById("app").innerText);
+  check("a cloze card shows the English that makes it answerable",
+    /I'm in the kitchen/i.test(front), front.split("\n").slice(0, 5).join(" / "));
+  const back = await reveal();
+  check("and the rule behind it on the back", /em \+ a/i.test(back));
+}
+
+/* Dictation must NOT show it — there the prompt is the sound. */
+if (await cardScreen("g|ctc1", "listen")) {
+  const front = await page.evaluate(() => document.getElementById("app").innerText);
+  check("dictation still withholds the English, which would be the answer",
+    !/I'm in the kitchen/i.test(front));
+}
+
+/* The redesign moved the example sentence out of noteCards() and left its
+   listen button behind, so the same word was audible in Escolha and silent in
+   Rever — while the app went on prefetching a clip nothing could play. */
+const withClip = await page.evaluate(() => {
+  const M = window.__MP__;
+  const c = M.CARDS.filter((x) => !x.k && x.ex && M.Recorded.srcFor(x.ex))[0];
+  return c ? String(c.i) : null;
+});
+if (withClip) {
+  await cardScreen(withClip, "review");
+  await reveal();
+  const said = await page.evaluate(() => {
+    const ctx = [...document.querySelectorAll(".sfspt")].filter((e) => /no contexto/.test(e.textContent))[0];
+    return { block: !!ctx, btn: !!(ctx && ctx.querySelector("[data-say]")) };
+  });
+  check("the example sentence on the card back can be played", said.block && said.btn,
+    JSON.stringify(said));
+}
+
+/* An accent-only miss is right; a word the accent distinguishes is not. */
+const typed = (id, text) => page.evaluate(([cid, t]) => {
+  const M = window.__MP__;
+  const card = M.BY_ID[cid] || M.CARDS.filter((c) => String(c.i) === cid)[0];
+  M.SES = { mode: "listen", q: [card], i: 0, done: 0, total: 1, right: 0, wrong: 0, near: 0,
+            shown: false, dir: "en", typed: "", verdict: null, missed: [] };
+  M.renderSession();
+  const input = document.getElementById("ans");
+  input.value = t;
+  document.querySelector("[data-check]").click();
+  return { k: M.SES.verdict && M.SES.verdict.k, soft: !!(M.SES.verdict || {}).soft,
+           text: document.getElementById("app").innerText };
+}, [id, text]);
+
+const irmao = await typed(String((await page.evaluate(() =>
+  (window.__MP__.CARDS.filter((c) => c.p === "o irmão")[0] || {}).i))), "o irmao");
+check("a missing accent counts as correct", irmao.k === "ok" && irmao.soft, JSON.stringify(irmao.k));
+check("and the accented spelling is still shown", /irmão/.test(irmao.text));
+
+const avo = await page.evaluate(() => (window.__MP__.CARDS.filter((c) => c.p === "o avô")[0] || {}).i);
+if (avo !== undefined) {
+  const clash = await typed(String(avo), "o avó");
+  check("but a word the accent distinguishes is not forgiven", clash.k === "near",
+    JSON.stringify(clash.k));
+}
+
+const faco = await page.evaluate(() => (window.__MP__.CARDS.filter((c) => /^faço$/.test(c.p))[0] || {}).i);
+if (faco !== undefined) {
+  const ced = await typed(String(faco), "faco");
+  check("the cedilha is not an accent", ced.k === "near", JSON.stringify(ced.k));
+}
+
+/* The day's text vanished entirely on an empty deck. */
+const dailyEmpty = await page.evaluate(() => {
+  const M = window.__MP__;
+  M.S.prog = {};
+  M.go("leitura");
+  const row = document.querySelector(".todaytext");
+  return { present: !!row, text: row ? row.innerText : "", disabled: row ? row.disabled : null };
+});
+check("the day's text says why it can't be written, rather than vanishing",
+  dailyEmpty.present && dailyEmpty.disabled, dailyEmpty.text.replace(/\s+/g, " ").slice(0, 90));
+
 await B.close();
 server.close();
 

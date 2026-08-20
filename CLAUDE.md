@@ -40,7 +40,7 @@ two cards each with different word classes — `a` (article + preposition), `se`
 adverb). They share one content entry, so its note must cover both senses.
 | `sync.js` / `sync-config.js` | Supabase auth + progress sync (publishable key only) |
 | `sw.js` | Service worker: versioned app-shell cache + **durable** audio cache |
-| `audio/` | ~185MB of pre-generated speech, committed deliberately |
+| `audio/` | 402 MiB of pre-generated speech, committed deliberately |
 | `tools/audio/` | Audio build scripts |
 | `tools/conj-check.mjs` | Conjugation spot-checks against hand-written paradigms |
 | `tools/voice-test/` | Blind voice A/B harness (how Duarte was chosen) |
@@ -83,7 +83,7 @@ Azure Speech, voice **pt-PT-DuarteNeural**, native pace, format
 sibilants live (*os livros* = "ush LEE-vrush"), and sounds scratchy. That was
 tested and rejected. The 0.85× playback speed was *not* the cause.
 
-Four sets, all matched **by exact spoken text** (mirroring `sayable()`), so
+Five sets, all matched **by exact spoken text** (mirroring `sayable()`), so
 adding audio never requires touching call sites:
 
 | Dir | Contents | Manifest key |
@@ -92,6 +92,7 @@ adding audio never requires touching call sites:
 | `audio/r/<readingId>__<line>.mp3` | 517 passage lines | `readings` |
 | `audio/d/<i>.mp3` | conjugation + grammar drills | `drills` (texts, positional) |
 | `audio/p/<i>.mp3` | passage words, lower-cased | `passage` (texts, positional) |
+| `audio/x/<i>.mp3` | the example sentence on each card | `examples` (texts, positional) |
 
 **`drills` and `passage` are positional, and the shipped manifest owns those
 positions.** Both lists are sorted, so growing them would renumber everything
@@ -111,8 +112,15 @@ node tools/audio/build.mjs --limit 30    # pilot
 ```
 
 Needs `.env` with `AZURE_SPEECH_KEY` and `AZURE_SPEECH_REGION` (currently
-`uksouth`). Free F0 tier: 500k chars/month; the whole library is ~62k, and
-existing files are never re-requested.
+`uksouth`). Free F0 tier: 500k chars/month; existing files are never
+re-requested. **The library is 9,470 clips / 122,412 characters / 402 MiB** —
+measured from `audio/manifest.json`, not estimated. This file used to say 62k
+characters and 185MB, both of which predate the twelve-tense expansion and the
+examples set; anyone budgeting from those numbers is out by 2×.
+
+**Never run `node tools/audio/build.mjs` with no flag.** It requests everything
+missing, which is 135 example sentences *plus* 5,710 unrecorded B1/B2 drill
+forms — 12× the intended spend. Name the set: `--examples`, `--drills`.
 
 `audio/manifest.json` is precached **with a `?v=` like every other shell file**
 — `cache.addAll()` fetches through the browser's HTTP cache, and an unversioned
@@ -259,6 +267,67 @@ Card ids are `c|<word>|<tenseId>|<person>`. **`p` (presente) and `t` (pretérito
 perfeito) must keep those ids** — they are the two tenses that existed before
 the expansion, and 2,693 cards are already scheduled under them.
 
+## What a drill card teaches
+
+Every conjugation and grammar card has always carried its own explanation, and
+for a long time no screen rendered a word of it. `conjWhy()` builds it, `TUSE`
+says what each tense is *for*, and 15,494 cards held ~372 characters each of
+prose that went straight to the bit bucket. The learner got a form, a verdict
+and nothing else — reported, fairly, as "there are so many tenses I don't even
+know the English translation, let alone how to use it".
+
+Three layers now, and all of them are text — no new audio:
+
+- **`TENSES[].gloss`** — what the tense is *for*, in one phrase, on the front
+  of the card while the question is still open. *imperfect* is a grammarian's
+  label; "what used to happen, or was going on" is something a learner can act
+  on.
+- **`TFRAME`** — twelve sentence frames, one per tense, with the conjugated
+  form dropped in at render time. Fourteen authored strings, not 15,154 stored
+  sentences, because the frame doesn't depend on which verb it holds. They are
+  adverbial (*Ontem…*, *Antigamente…*) so the tense is what makes them true,
+  and they survive reflexives untouched: the generated form already carries its
+  pronoun in the right place, enclitic *rio-me*, proclitic *me ria*,
+  mesoclitic *rir-me-ei*.
+  **Every frame ends in `assim`, and that is load-bearing.** A bare frame is
+  fine for *falar* — "Antigamente falávamos sempre" — and ungrammatical for a
+  copula, because "Antigamente éramos sempre" wants a predicate that never
+  comes. *assim* supplies one where it's needed and reads naturally where it
+  isn't.
+- **`c.tw` then `c.t`** — what the tense is for, then how the form is built,
+  the second folded into a `<details>`. `conjWhy()` returns the two halves
+  separately for exactly this reason.
+
+`drillTeach()` renders all of it and is called from **`noteCards()`**, which is
+still the only renderer of that block (see above — don't add a second one). It
+honours `S.set.tips`, which until now was a setting that gated nothing at all.
+
+Grammar cards get the same treatment: `gd()` takes an English cue, `hint`,
+which is shown on the front. Without it a cloze like *Estou ___ cozinha.* is
+unanswerable — *do* and *no* are both real Portuguese and which one the card
+wants is a fact about the English sentence, which the card never showed. The
+cue is deliberately **withheld in Ditado**, where the prompt is the sound and
+the English would hand over the answer.
+
+## Accents in free text
+
+A missing accent scores **correct** (FSRS grade 3), not "almost". You knew the
+word; the mark is a spelling slip. The correct spelling is still shown against
+what you typed, because scoring it right is the point and never learning where
+the til goes is not.
+
+Two things are held back from that forgiveness, and both matter:
+
+- **The cedilla is not an accent.** NFD decomposes ç into c + U+0327, which sits
+  inside the range `norm()` strips — so `norm("faço") === "faco"`, and a miss
+  that changes the consonant from /s/ to /k/ was filed under "the accents are
+  off". `bareAccents()` keeps U+0327 deliberately.
+- **`spellClash()`** blocks the soft pass when what was typed is itself another
+  real word, or another cell of the same verb. The deck contains five such
+  pairs — *por/pôr*, *avô/avó*, *nós/nos*, *porquê/porque*, *quando/quando?* —
+  and conjugation adds *falamos/falámos*, *ficara/ficará*. Forgiving those would
+  teach that the mark is decoration.
+
 ## When is a verb "known"?
 
 Deliberately two separate verdicts, and they never share a total:
@@ -294,7 +363,7 @@ and the queue behind it — they were written separately, which is how a row
 comes to promise one set and serve another.
 
 ```bash
-node tools/ui-check.mjs      # 9 checks, in a real browser, through the real screens
+node tools/ui-check.mjs      # 23 checks, in a real browser, through the real screens
 ```
 
 That harness serves the working tree and drives it with `?dev=1`, asserting on
@@ -600,6 +669,22 @@ Brazilian text. Always returned with `ai:true`, so the ✳ mark shows.
 
 Rendered by pushing the passage into `READINGS` and calling `renderReading`,
 so it inherits tap-a-word, cloze, translate and comprehension for free.
+
+**`dailyWords()` tops up from words the scheduler is about to introduce.** It
+used to walk only `S.prog`, which gains a card only once it has been *graded* —
+so on day one, or the day after a wipe, the list was empty, `dailyReady()` was
+false, and the Ler row rendered as the empty string. No row, no explanation,
+nothing: the feature simply wasn't there, which is indistinguishable from
+broken. That is the same wrong bar `CONV_MIN` had. The top-up reads `WORDS`
+(frequency-ordered, the head `newPool()` draws from), honours `S.set.classes`,
+and never writes: it cannot create progress or spend the day's allowance.
+
+**`dailyBlock()` returns the reason instead of a boolean.** Not configured, not
+signed in, too few words — each says so, in both languages, on a row that stays
+on screen. And the gateway's own errors are read properly: the function spells
+its errors `{error}` but anything the platform rejected first — an expired JWT,
+a missing deployment — comes back as `{code, message}`, and reading only
+`error` turned every one of those into the bare word *"failed"*.
 
 The privacy notice discloses this data flow. **If what gets sent ever changes,
 the notice changes with it.**
