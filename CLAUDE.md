@@ -276,24 +276,27 @@ prose that went straight to the bit bucket. The learner got a form, a verdict
 and nothing else — reported, fairly, as "there are so many tenses I don't even
 know the English translation, let alone how to use it".
 
-Three layers now, and all of them are text — no new audio:
+Three layers now, and all of them are text already in the repo — no new audio:
 
 - **`TENSES[].gloss`** — what the tense is *for*, in one phrase, on the front
   of the card while the question is still open. *imperfect* is a grammarian's
   label; "what used to happen, or was going on" is something a learner can act
   on.
-- **`TFRAME`** — twelve sentence frames, one per tense, with the conjugated
-  form dropped in at render time. Fourteen authored strings, not 15,154 stored
-  sentences, because the frame doesn't depend on which verb it holds. They are
-  adverbial (*Ontem…*, *Antigamente…*) so the tense is what makes them true,
-  and they survive reflexives untouched: the generated form already carries its
-  pronoun in the right place, enclitic *rio-me*, proclitic *me ria*,
-  mesoclitic *rir-me-ei*.
-  **Every frame ends in `assim`, and that is load-bearing.** A bare frame is
-  fine for *falar* — "Antigamente falávamos sempre" — and ungrammatical for a
-  copula, because "Antigamente éramos sempre" wants a predicate that never
-  comes. *assim* supplies one where it's needed and reads naturally where it
-  isn't.
+- **the lemma's own example sentence** — `c.w.ex` / `c.w.exE`, the one a person
+  wrote for the vocabulary card. Every conjugation card has one; coverage is
+  100%, and most already have audio in the `examples` set.
+
+  Composed sentences were tried here first and withdrawn. A frame per tense
+  with the conjugated form dropped in ("Antigamente {f} sempre assim") reads
+  well for *falar* and produces rubbish elsewhere, and all of it shipped before
+  a review caught it: *"Hoje sei assim."* and *"Hoje preciso assim."* are not
+  Portuguese, because a manner adverb cannot stand in for a direct object or an
+  obligatory preposition; *"Nessa altura já deitara-me"* is not Portuguese,
+  because **`já` attracts the pronoun forward**; *"É melhor me deitar"* is
+  Brazilian order, because the proclisis those forms carry needs a trigger and
+  "É melhor" is not one. The authored sentence has none of these problems and
+  carries what a frame cannot know — *precisar* arrives with its **de**.
+
 - **`c.tw` then `c.t`** — what the tense is for, then how the form is built,
   the second folded into a `<details>`. `conjWhy()` returns the two halves
   separately for exactly this reason.

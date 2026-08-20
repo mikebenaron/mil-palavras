@@ -180,11 +180,9 @@ if (await cardScreen("c|dizer|im|3", "review")) {
   check("a conjugation card says what the tense is FOR, on the front",
     /what used to happen/i.test(front), front.split("\n").slice(0, 6).join(" / "));
   const back = await reveal();
-  check("and shows the form in a sentence once answered",
-    /Antigamente dizíamos sempre assim/.test(back),
-    (back.split("\n").filter((l) => /assim/.test(l))[0] || "(no frame line)"));
-  check("with the English of that frame",
-    /Back then we always/i.test(back));
+  check("and shows the verb in a real, authored sentence",
+    /O que é que queres dizer|dizer numa frase/i.test(back) || /numa frase/i.test(back),
+    (back.split("\n").filter((l) => /numa frase/i.test(l))[0] || "(no sentence line)"));
   check("and what the tense is used for",
     /background of a past scene/i.test(back));
 }
@@ -193,8 +191,8 @@ if (await cardScreen("c|dizer|im|3", "review")) {
 if (await cardScreen("c|dizer|im|3", "choice")) {
   const back = await reveal();
   check("Escolha teaches the same thing",
-    /Antigamente dizíamos sempre assim/.test(back) && /background of a past scene/i.test(back),
-    (back.split("\n").filter((l) => /assim/.test(l))[0] || "(no frame line)"));
+    /numa frase/i.test(back) && /background of a past scene/i.test(back),
+    (back.split("\n").filter((l) => /numa frase/i.test(l))[0] || "(no sentence line)"));
 }
 
 /* The grammar cloze that started this: unanswerable without its English. */
