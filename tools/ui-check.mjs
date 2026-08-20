@@ -258,6 +258,19 @@ if (avo !== undefined) {
     JSON.stringify(clash.k));
 }
 
+/* The clash guard was first written per-verb, which meant it only ever saw
+   collisions inside one card family — and the commonest minimal pairs in the
+   language straddle two: está is a cell of estar while esta is a vocabulary
+   card. The one test written to defend the carve-out sampled the only class of
+   card where the sharded version worked, so the hole shipped green. */
+for (const [id, typedText, label] of [["c|estar|p|2", "esta", "está / esta"],
+                                      ["c|ser|p|2", "e", "é / e"],
+                                      ["c|pôr|ip|0", "por", "pôr / por"]]) {
+  const got = await typed(id, typedText);
+  check("a conjugated form the accent distinguishes is not forgiven — " + label,
+    got.k === "near", JSON.stringify(got.k));
+}
+
 const faco = await page.evaluate(() => (window.__MP__.CARDS.filter((c) => /^faço$/.test(c.p))[0] || {}).i);
 if (faco !== undefined) {
   const ced = await typed(String(faco), "faco");

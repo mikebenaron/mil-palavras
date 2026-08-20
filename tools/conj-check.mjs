@@ -186,7 +186,14 @@ const REF = {
   dormir: { sp:["durma","durmas","durma","durmamos","durmam"] },
   pedir:  { sp:["peça","peças","peça","peçamos","peçam"] },
   ouvir:  { sp:["ouça","ouças","ouça","ouçamos","ouçam"] },
-  seguir: { sp:["siga","sigas","siga","sigamos","sigam"] },
+  /* The hiatus accent belongs to a stem that really ends in a vowel — saído,
+     caído, possuído. The u of gu/qu is a silent digraph, not that vowel, so
+     these three are plain -ido. They shipped as *seguído for months. */
+  seguir: { sp:["siga","sigas","siga","sigamos","sigam"], pp:"seguido" },
+  conseguir: { pp:"conseguido" },
+  erguer: { pp:"erguido" },
+  sair: { pp:"saído" },
+  possuir: { pp:"possuído" },
   abrir:  { pp:"aberto" },
   escrever:{ pp:"escrito" },
   descobrir:{ pp:"descoberto" },
