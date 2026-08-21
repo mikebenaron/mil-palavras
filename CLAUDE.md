@@ -287,8 +287,10 @@ Three layers now, and all of them are text already in the repo — no new audio:
   cell rather than the tense: *era* on its own says nothing about *eras / era /
   éramos / eram*. It rebuilds the paradigm through the same `conjugateAll` +
   `PLABEL` + `placeClitic` path `buildConjugation()` uses, so the table and the
-  card can never disagree about a form. A person the verb hasn't got renders
-  *— não existe*, which for `haver` is itself the lesson.
+  card can never disagree about a form — `ui-check` proves it by sweeping all
+  15,154 cards and comparing the marked cell against the graded answer. A
+  person the verb hasn't got renders *— não existe*, which for `haver`
+  (impersonal) and `acontecer` (third person only) is itself the lesson.
 
 - **the lemma's example sentence, but only when it contains the drilled form**
   — `conjExample()`. It used to show it unconditionally, and that was reported,
@@ -379,7 +381,7 @@ and the queue behind it — they were written separately, which is how a row
 comes to promise one set and serve another.
 
 ```bash
-node tools/ui-check.mjs      # 23 checks, in a real browser, through the real screens
+node tools/ui-check.mjs      # 31 checks, in a real browser, through the real screens
 ```
 
 That harness serves the working tree and drives it with `?dev=1`, asserting on

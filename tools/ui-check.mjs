@@ -202,6 +202,44 @@ if (await cardScreen("c|ser|im|0", "review")) {
     table.marked.length === 1 && table.marked[0] === "era", JSON.stringify(table.marked));
 }
 
+/* The table is rebuilt from conjugateAll rather than read off the card, so the
+   two could in principle disagree. Sweep every conjugation card and prove they
+   never do — 15,154 cards, through the real function, in a real browser. */
+{
+  const sweep = await page.evaluate(() => {
+    const M = window.__MP__, box = document.createElement("div");
+    const bad = { none: 0, mark: [], form: [], label: [], threw: [], bold: [] };
+    let fired = 0;
+    for (const c of M.CARDS.filter((x) => x.c === "conjugacao")) {
+      let html;
+      try { html = M.conjTable(c); } catch (e) { bad.threw.push(c.i); continue; }
+      if (!html) { bad.none++; continue; }
+      box.innerHTML = html;
+      const rows = [...box.querySelectorAll(".cjr")];
+      const on = rows.filter((r) => r.classList.contains("on"));
+      if (on.length !== 1) { bad.mark.push(c.i); continue; }
+      if (on[0].querySelector(".cjf").textContent !== c.p) bad.form.push(c.i);
+      if (on[0].querySelector(".cjp").textContent !== c.q) bad.label.push(c.i);
+      let ex;
+      try { ex = M.conjExample(c); } catch (e) { bad.threw.push("ex:" + c.i); continue; }
+      if (ex) {
+        fired++;
+        box.innerHTML = ex;
+        const b = box.querySelector("b");
+        if (!b || b.textContent.toLowerCase() !== c.p.toLowerCase()) bad.bold.push(c.i);
+      }
+    }
+    return { bad, fired, total: M.CARDS.filter((x) => x.c === "conjugacao").length };
+  });
+  const b = sweep.bad;
+  check("every card's table marks exactly the form the card grades",
+    b.none === 0 && !b.mark.length && !b.form.length && !b.label.length && !b.threw.length,
+    sweep.total + " cards · " + JSON.stringify({ noTable: b.none, mark: b.mark.length,
+      form: b.form.length, label: b.label.length, threw: b.threw.length }));
+  check("and every sentence it does show highlights that same form",
+    !b.bold.length && sweep.fired > 0, sweep.fired + " sentences shown, " + b.bold.length + " wrong");
+}
+
 /* A verb that hasn't got a person says so, rather than showing a blank. */
 if (await cardScreen("c|haver|si|2", "review")) {
   const back = await reveal();
