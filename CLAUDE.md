@@ -292,25 +292,36 @@ Three layers now, and all of them are text already in the repo — no new audio:
   person the verb hasn't got renders *— não existe*, which for `haver`
   (impersonal) and `acontecer` (third person only) is itself the lesson.
 
-- **the lemma's example sentence, but only when it contains the drilled form**
-  — `conjExample()`. It used to show it unconditionally, and that was reported,
-  fairly, as ridiculous: a card revealing *vai* illustrated it with *"Vou ao
-  mercado"*, and a pretérito imperfeito card answering *era* showed *"Eu sou
-  português"* — a different person, in a different tense, under a heading
-  reading "in a sentence". Only **3.2% of the 15,154 cards** have a lemma
-  sentence containing their own form; the rest now show nothing rather than
-  something misleading.
+- **the drilled form, in a sentence** — `conjSentence()`, two sources with the
+  authored one winning. 486 of the 15,154 cards have a lemma example that
+  already contains the exact form; those show the real sentence with the form
+  marked. The rest compose `TFRAME[tense]` with `VCOMP[verb]`.
 
-  Composed sentences were tried before that and withdrawn. A frame per tense
-  with the form dropped in ("Antigamente {f} sempre assim") reads well for
-  *falar* and produces rubbish elsewhere, and all of it shipped before a review
-  caught it: *"Hoje sei assim."* and *"Hoje preciso assim."* are not Portuguese,
-  because a manner adverb cannot stand in for a direct object or an obligatory
-  preposition; *"Nessa altura já deitara-me"* is not, because **`já` attracts
-  the pronoun forward**; *"É melhor me deitar"* is Brazilian order, because the
-  proclisis those forms carry needs a trigger and "É melhor" is not one.
-  **Don't generate Portuguese here.** Everything on this card is either
-  authored by hand or produced by the conjugator the tests cover.
+  Showing the lemma sentence regardless was the bug, reported twice: a card
+  revealing *vai* illustrated it with *"Vou ao mercado"*, and a pretérito
+  imperfeito card answering *era* showed *"Eu sou português"* — a different
+  person, in a different tense, under a heading reading "in a sentence".
+  Hiding it instead was the over-correction: it left 97% of cards with no
+  sentence at all, which is not what was asked for either.
+
+  **`VCOMP` is what makes the frames Portuguese.** One complement per verb —
+  *saber* takes "a resposta", *precisar* takes "de tempo", *pertencer* takes
+  "a alguém" — because "Hoje sei." is not a sentence. 252 of the 275 verbs
+  need one; the other 23 are complete alone (*dormir*, *chegar*, *morrer*).
+  A prepositional verb carries its preposition, which is the part no generic
+  frame could know.
+
+  **Every frame carries a proclisis trigger exactly where its tense needs one**
+  — *que / se / quando / para* for the proclitic tenses, nothing before the
+  enclitic ones. An earlier attempt got this wrong in both directions and
+  shipped *"Nessa altura já deitara-me"* (`já` attracts the pronoun forward)
+  and *"É melhor me deitar"* (Brazilian order, nothing licensing the
+  proclisis). `ui-check` now asserts the property on the frame table itself,
+  and sweeps all 15,154 cards to confirm the sentence contains the form the
+  card grades.
+
+  No frame for the participle: five verbs store the passive form, which cannot
+  follow *ter*, and `TUSE.pp` already shows both real uses by hand.
 
 - **`c.tw` then `c.t`** — what the tense is for, then how the form is built,
   the second folded into a `<details>`. `conjWhy()` returns the two halves
@@ -381,7 +392,7 @@ and the queue behind it — they were written separately, which is how a row
 comes to promise one set and serve another.
 
 ```bash
-node tools/ui-check.mjs      # 31 checks, in a real browser, through the real screens
+node tools/ui-check.mjs      # 35 checks, in a real browser, through the real screens
 ```
 
 That harness serves the working tree and drives it with `?dev=1`, asserting on

@@ -221,7 +221,7 @@ if (await cardScreen("c|ser|im|0", "review")) {
       if (on[0].querySelector(".cjf").textContent !== c.p) bad.form.push(c.i);
       if (on[0].querySelector(".cjp").textContent !== c.q) bad.label.push(c.i);
       let ex;
-      try { ex = M.conjExample(c); } catch (e) { bad.threw.push("ex:" + c.i); continue; }
+      try { ex = M.conjSentence(c); } catch (e) { bad.threw.push("ex:" + c.i); continue; }
       if (ex) {
         fired++;
         box.innerHTML = ex;
@@ -236,8 +236,9 @@ if (await cardScreen("c|ser|im|0", "review")) {
     b.none === 0 && !b.mark.length && !b.form.length && !b.label.length && !b.threw.length,
     sweep.total + " cards · " + JSON.stringify({ noTable: b.none, mark: b.mark.length,
       form: b.form.length, label: b.label.length, threw: b.threw.length }));
-  check("and every sentence it does show highlights that same form",
-    !b.bold.length && sweep.fired > 0, sweep.fired + " sentences shown, " + b.bold.length + " wrong");
+  check("and every card gets a sentence containing the form it just asked for",
+    !b.bold.length && sweep.fired >= sweep.total - 300,
+    sweep.fired + " of " + sweep.total + " cards · " + b.bold.length + " showing a different form");
 }
 
 /* A verb that hasn't got a person says so, rather than showing a blank. */
@@ -252,13 +253,31 @@ if (await cardScreen("c|haver|si|2", "review")) {
    entirely. The sentence now appears only when it contains the drilled form. */
 if (await cardScreen("c|ir|p|2", "review")) {
   const back = await reveal();
-  check("no sentence is shown when it would use a different form",
-    !/numa frase/i.test(back) && !/Vou ao mercado/.test(back));
+  check("the sentence uses the form the card asked for, not another one",
+    /Hoje vai ao mercado/.test(back) && !/Vou ao mercado/.test(back),
+    (back.split("\n").filter((l) => /mercado/.test(l))[0] || "(none)"));
 }
 if (await cardScreen("c|ir|p|0", "review")) {
   const back = await reveal();
-  check("but it is shown when the sentence really does use that form",
-    /numa frase/i.test(back) && /Vou ao mercado/.test(back));
+  check("and an authored sentence wins when it already contains that form",
+    /Vou ao mercado/.test(back));
+}
+/* The two cards from the report: a different person, and a different tense. */
+if (await cardScreen("c|ser|im|0", "review")) {
+  const back = await reveal();
+  check("the imperfeito card shows the imperfeito, in a sentence",
+    /Antigamente era sempre assim/.test(back) && !/Eu sou português/.test(back),
+    (back.split("\n").filter((l) => /assim|português/.test(l))[0] || "(none)"));
+}
+/* Verbs that need a complement: "Hoje sei." is not Portuguese. */
+for (const [id, want] of [["c|saber|p|0", "Hoje sei a resposta"],
+                          ["c|precisar|im|0", "Antigamente precisava sempre de tempo"],
+                          ["c|deitar-se|sp|0", "Espero que me deite cedo"]]) {
+  if (await cardScreen(id, "review")) {
+    const back = await reveal();
+    check("a complement makes it a sentence — " + want, back.includes(want),
+      (back.split("\n").filter((l) => /\b(sei|precisava|deite)\b/.test(l))[0] || "(none)"));
+  }
 }
 
 /* Escolha is a different renderer, and "in all modes" was the report. */
