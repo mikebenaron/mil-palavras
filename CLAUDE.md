@@ -438,7 +438,14 @@ That harness serves the working tree and drives it with `?dev=1`, asserting on
 `__MP__.SES` after clicking. It is the only test here that goes through the UI,
 and it exists because this class of bug is invisible from inside any single
 function: nothing was wrong with `tenseBlocked()`, only with who called it.
-It needs playwright and skips itself with a message if that isn't installed.
+It needs playwright, and when it can't find it, it **exits 2 rather than 0**:
+the other three harnesses exit non-zero on failure, and a loop over the four
+read a silent skip as a pass on any machine without playwright — 43 checks
+reported green having never run. `--allow-skip` / `SKIP_UI_CHECK=1` is the
+way to skip deliberately. It looks for the module in node's own resolution,
+`NODE_PATH`, `npm root -g` and the usual prefixes; it used to look in
+`playwright` plus one hardcoded Linux path, so a normal `npm i -g playwright`
+on this Mac (global root `~/.local/node/lib/node_modules`) was never found.
 
 Nothing is deleted. A rung switched off keeps its stability and its due dates,
 so switching it back on returns those cards exactly where they were — overdue,

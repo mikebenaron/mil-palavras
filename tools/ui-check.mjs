@@ -1,6 +1,7 @@
 /* Drive the real app in a real browser and check what it actually serves.
  *
  *   node tools/ui-check.mjs          # needs playwright + a chromium build
+ *   node tools/ui-check.mjs --allow-skip   # exit 0 rather than 2 if it is absent
  *
  * The other harnesses reach into the app and call one function. This one
  * clicks. It exists because the bug it was written for is invisible from
@@ -16,27 +17,66 @@
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
+import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(new URL("..", import.meta.url).pathname);
 
 /* Playwright is not a dependency of this repo — there is no build step and no
-   package.json, and one test is not a reason to acquire either. Find it if the
-   machine has it, and say so plainly if it hasn't. */
+   package.json, and one test is not a reason to acquire either. So it is
+   looked for wherever this machine actually keeps global modules: node's own
+   resolution, NODE_PATH, whatever `npm root -g` says, and the usual prefixes.
+   The list used to be "playwright" plus one hardcoded Linux path, so a normal
+   `npm i -g playwright` on a Mac resolved nothing and the harness skipped. */
+function moduleRoots() {
+  const roots = (process.env.NODE_PATH || "").split(path.delimiter);
+  try {                                  // the authority, when there is an npm to ask
+    roots.push(execFileSync("npm", ["root", "-g"],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim());
+  } catch (e) { /* no npm on PATH, or it failed — the fixed prefixes below still apply */ }
+  roots.push(
+    path.join(os.homedir(), ".local/node/lib/node_modules"),   // node installed under $HOME
+    "/opt/homebrew/lib/node_modules",                          // Homebrew, Apple silicon
+    "/usr/local/lib/node_modules",                             // Homebrew on Intel, and node's own pkg
+    "/usr/lib/node_modules",
+    "/opt/node22/lib/node_modules"                             // the container this was written on
+  );
+  return [...new Set(roots.filter(Boolean))];
+}
+
+/* An unrun harness is not a passing one. The other three exit non-zero when
+   they fail, and a CI job or a shell loop over the four reads an exit of 0 as
+   "ui-check passed" — which it did not, having asserted nothing. Skipping is
+   still allowed, but only when someone asks for it out loud. */
+function cannotRun(why, fix, looked) {
+  const skip = process.argv.includes("--allow-skip") || process.env.SKIP_UI_CHECK === "1";
+  console.log(`ui-check: ${why}`);
+  if (looked) for (const l of looked) console.log(`  looked in: ${l}`);
+  console.log(`  fix: ${fix}`);
+  if (skip) {
+    console.log("  skipping: --allow-skip / SKIP_UI_CHECK=1 was given");
+    process.exit(0);
+  }
+  console.log("  no checks ran — exiting 2 so this is not mistaken for a pass.");
+  console.log("  Pass --allow-skip (or SKIP_UI_CHECK=1) to skip deliberately.");
+  process.exit(2);
+}
+
 async function browser() {
   const require = createRequire(import.meta.url);
+  const roots = moduleRoots();
+  const ids = ["playwright", ...roots.map((r) => path.join(r, "playwright"))];
   let pw;
-  for (const id of ["playwright", "/opt/node22/lib/node_modules/playwright"]) {
+  for (const id of ids) {
     try {
-      const m = await import(require.resolve(id));
+      const m = await import(pathToFileURL(require.resolve(id)).href);
       pw = m.chromium ? m : m.default;      // it ships CommonJS; importing it nests the exports
       if (pw && pw.chromium) break;
     } catch (e) { /* keep looking */ }
   }
-  if (!pw || !pw.chromium) {
-    console.log("ui-check: playwright not installed — skipping (npm i -g playwright)");
-    process.exit(0);
-  }
+  if (!pw || !pw.chromium) cannotRun("playwright not installed", "npm i -g playwright", roots);
   const candidates = [
     process.env.CHROMIUM_PATH,
     ...(await fs.readdir("/opt/pw-browsers").catch(() => []))
@@ -47,7 +87,12 @@ async function browser() {
     if (!(await fs.access(executablePath).then(() => true, () => false))) continue;
     return pw.chromium.launch({ executablePath });
   }
-  return pw.chromium.launch();          // whatever playwright installed itself
+  try {
+    return await pw.chromium.launch();   // whatever playwright installed itself
+  } catch (e) {                          // the module is there, the browser build isn't
+    cannotRun(`playwright is installed but chromium will not launch — ${String(e.message || e).split("\n")[0]}`,
+      "npx playwright install chromium");
+  }
 }
 
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".json": "application/json",
