@@ -385,6 +385,92 @@ const dailyEmpty = await page.evaluate(() => {
 check("the day's text says why it can't be written, rather than vanishing",
   dailyEmpty.present && dailyEmpty.disabled, dailyEmpty.text.replace(/\s+/g, " ").slice(0, 90));
 
+/* ---------------------------------------------------------------------------
+   "Como funcionam os verbos" — the reference section. Everything on it is
+   derived from the same generator the cards use, so the assertions check that
+   the derivation agrees with the deck rather than that some prose exists.
+   --------------------------------------------------------------------------- */
+{
+  await open("estudar", '[data-nav="verbguia"]');
+  check("Estudar offers the verb guide", true);
+
+  const rows = await page.evaluate(() => {
+    window.__MP__.go("verbguia");
+    return [...document.querySelectorAll("[data-tg]")].map((b) => b.getAttribute("data-tg"));
+  });
+  check("the guide lists every tense", rows.length === 12, rows.join(","));
+
+  /* The irregular count on the page must equal the deck's own count. */
+  const counted = await page.evaluate(() => {
+    const M = window.__MP__, out = {};
+    M.CARDS.forEach((c) => {
+      if (c.c !== "conjugacao") return;
+      const b = out[c.tn] || (out[c.tn] = { irr: new Set(), all: new Set() });
+      b.all.add(c.v);
+      if (/irregular/.test(c.s)) b.irr.add(c.v);
+    });
+    const r = {};
+    Object.keys(out).forEach((k) => { r[k] = [out[k].irr.size, out[k].all.size]; });
+    return r;
+  });
+  let mismatch = [];
+  for (const tid of rows) {
+    const shown = await page.evaluate((t) => {
+      window.__MP__.go("verbguia");
+      document.querySelector('[data-tg="' + t + '"]').click();
+      const txt = document.getElementById("app").innerText;
+      const m = /(\d+) of (\d+) verbs are irregular/.exec(txt);
+      const none = /No verb is irregular in this tense: the rule holds for all (\d+)/.exec(txt);
+      return m ? [Number(m[1]), Number(m[2])] : none ? [0, Number(none[1])] : null;
+    }, tid);
+    const want = counted[tid];
+    if (!shown || !want || shown[0] !== want[0] || shown[1] !== want[1])
+      mismatch.push(tid + " page=" + JSON.stringify(shown) + " deck=" + JSON.stringify(want));
+  }
+  check("and its irregular counts are the deck's own, tense by tense",
+    !mismatch.length, mismatch.length ? mismatch.join(" | ") : "all 12 agree");
+
+  /* The two facts most worth knowing are the extremes. */
+  const fu = await page.evaluate(() => {
+    window.__MP__.go("verbguia");
+    document.querySelector('[data-tg="fu"]').click();
+    return document.getElementById("app").innerText;
+  });
+  check("the future names its three irregulars", /3 of 275/.test(fu) &&
+    /fazer/i.test(fu) && /dizer/i.test(fu) && /trazer/i.test(fu));
+  const ip = await page.evaluate(() => {
+    window.__MP__.go("verbguia");
+    document.querySelector('[data-tg="ip"]').click();
+    return document.getElementById("app").innerText;
+  });
+  check("and the personal infinitive says it has none", /No verb is irregular/.test(ip));
+
+  /* Each tense page explains the tense and shows the three model groups. */
+  const im = await page.evaluate(() => {
+    window.__MP__.go("verbguia");
+    document.querySelector('[data-tg="im"]').click();
+    const t = document.getElementById("app").innerText;
+    return { txt: t, forms: [...document.querySelectorAll(".cjf")].map((e) => e.textContent) };
+  });
+  check("a tense page carries what it is for and all three conjugations",
+    /background of a past scene/i.test(im.txt) &&
+    im.forms.includes("falava") && im.forms.includes("comia") && im.forms.includes("partia"),
+    im.forms.slice(0, 3).join(" / "));
+
+  /* And it can start a drill of exactly that tense. */
+  const drilled = await page.evaluate(() => {
+    const M = window.__MP__;
+    M.SES = null;
+    M.go("verbguia");
+    document.querySelector('[data-tg="im"]').click();
+    document.querySelector("[data-tdrill]").click();
+    return M.SES ? { n: M.SES.q.length, tenses: [...new Set(M.SES.q.map((c) => c.tn))] } : null;
+  });
+  check("and drilling from it serves that tense and nothing else",
+    drilled && drilled.n > 0 && drilled.tenses.length === 1 && drilled.tenses[0] === "im",
+    JSON.stringify(drilled));
+}
+
 await B.close();
 server.close();
 

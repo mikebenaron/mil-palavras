@@ -369,6 +369,33 @@ Two things are held back from that forgiveness, and both matter:
   and conjugation adds *falamos/falámos*, *ficara/ficará*. Forgiving those would
   teach that the mark is decoration.
 
+## Como funcionam os verbos — the reference section
+
+Estudar ▸ referência ▸ *Como funcionam*. An explainer rather than a drill, and
+**it authors no new grammar**: the prose is `TUSE` and `conjWhy`, the tables
+come out of `conjugateAll`, and the irregular counts are measured from the
+generated deck. So it cannot drift away from what the cards teach — `ui-check`
+asserts the count on every tense page equals the deck's own, tense by tense.
+
+- The index opens with the **three principal parts**, because that is what
+  turns twelve tenses into three things to know. Then the three conjugations
+  side by side in the present, endings in bold. Then the twelve tenses grouped
+  by ladder rung, each row carrying its gloss, `falar`'s form, and how many
+  verbs are irregular in it.
+- A tense page gives what it is for (`TUSE`), how it is built (`conjWhy`'s
+  derivation half) with `falar` / `comer` / `partir` in that tense, who breaks
+  the rule, the reflexive placement for that clitic class, and a button that
+  drills exactly that tense.
+
+The count is the teaching. **Futuro and condicional have three irregular verbs
+between them** — *fazer, dizer, trazer*, the `dir- / far- / trar-` stems — and
+the **personal infinitive has none at all**, while the present has eighty. A
+learner who knows that stops treating all twelve as equally frightening.
+
+`irregularsBy()` memoises the sweep; `guideTable()` marks the ending by
+stripping the infinitive's stem, and shows an irregular form whole rather than
+inventing a split.
+
 ## When is a verb "known"?
 
 Deliberately two separate verdicts, and they never share a total:
@@ -404,7 +431,7 @@ and the queue behind it — they were written separately, which is how a row
 comes to promise one set and serve another.
 
 ```bash
-node tools/ui-check.mjs      # 36 checks, in a real browser, through the real screens
+node tools/ui-check.mjs      # 43 checks, in a real browser, through the real screens
 ```
 
 That harness serves the working tree and drives it with `?dev=1`, asserting on
