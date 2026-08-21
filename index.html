@@ -341,6 +341,16 @@ table.conj + table.conj{margin-top:14px}
 .footnote{background:var(--card);box-shadow:inset 3px 0 0 var(--teal);padding:14px 16px 14px 18px;margin-top:14px}
 .footnote .np{font-family:var(--serif);font-size:15.5px;color:var(--ink);line-height:1.45}
 .footnote .ne{font-size:12.5px;color:var(--slate-en);margin-top:4px;line-height:1.45}
+/* The whole tense, with the cell you were asked for marked. A conjugation is a
+   set of contrasts — seeing "era" beside "eras / era / éramos / eram" teaches
+   what seeing "era" alone cannot. */
+.cjt{margin:10px 0 2px;border-top:1px solid var(--rule)}
+.cjr{display:flex;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px solid var(--rule)}
+.cjr .cjp{flex:0 0 42%;font-size:12px;color:var(--slate-en);letter-spacing:.02em}
+.cjr .cjf{font-family:var(--serif);font-size:16px;color:var(--ink)}
+.cjr.on .cjf{color:var(--terra);font-weight:600}
+.cjr.on .cjp{color:var(--terra)}
+.cjr .cjf.miss{color:var(--slate-en);font-family:var(--sans);font-size:13px}
 
 /* grade buttons */
 .grades{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:22px}
@@ -5412,21 +5422,61 @@ function conjPromptFace(c){
    translation itself, in the order it wants them (context, then meaning), so
    repeating them underneath would say the same thing twice. Everywhere else
    still gets both. */
-/* The verb in a real sentence — the one a person wrote for the vocabulary
-   card, not one this file assembled.
+/* The whole tense, with the cell you were asked for marked.
 
-   Composing them was tried and withdrawn. A frame per tense with the form
-   dropped in reads well for falar and produces rubbish elsewhere: "Hoje sei
-   assim." and "Hoje preciso assim." are not Portuguese, `já` in front of an
-   enclitic pronoun is not Portuguese, and "É melhor me deitar" is Brazilian
-   word order. Every one of those shipped, in an app whose first rule is that
-   the Portuguese must be European and correct. The lemma's own example is
-   authored, checked, and already recorded — every conjugation card has one. */
+   A conjugation is a set of contrasts, and a drill that reveals one cell in
+   isolation teaches the cell rather than the tense: "era" on its own says
+   nothing about *eras / era / éramos / eram*. Rebuilt here the same way
+   buildConjugation() derives the cards — same conjugateAll, same PLABEL, same
+   placeClitic — so the table and the card can never disagree about a form.
+   A tense a verb hasn't got shows nothing; a person it hasn't got shows "—",
+   which is itself the lesson for haver and acontecer. */
+function conjTable(c){
+  var t = TBY[c.tn];
+  if (!t || !c.v) return "";
+  var all, raw;
+  try { all = conjugateAll(c.v); raw = all && all.f[t.id]; } catch (e) { return ""; }
+  if (!raw) return "";
+  var people = t.people || PLABEL;
+  var forms = t.single ? [raw]
+                       : raw.map(function(f, i){ return c.rf ? placeClitic(t, f, i, all) : f; });
+  var me = Number(String(c.i).split("|")[3]);
+  var rows = forms.map(function(f, i){
+    var who = t.single ? t.pt : ((t.cue ? t.cue + " " : "") + (people[i] || ""));
+    return '<div class="cjr' + (i === me ? " on" : "") + '">' +
+      '<span class="cjp">' + esc(who) + '</span>' +
+      (f ? '<span class="cjf">' + esc(f) + '</span>'
+         : '<span class="cjf miss">— não existe · this verb has no such form</span>') +
+      '</div>';
+  }).join("");
+  return '<div class="cjt">' + rows + '</div>';
+}
+
+/* The verb in a real sentence — but only when the sentence actually contains
+   the form being drilled.
+
+   It used to show the lemma's example unconditionally, which meant a card
+   asking for *ir* in the third person revealed "vai" and then illustrated it
+   with "Vou ao mercado", and a pretérito imperfeito card answered "era" and
+   showed "Eu sou português" — a different person, in a different tense, under
+   a heading saying "in a sentence". Only 3.2% of the 15,154 cards have a
+   lemma sentence containing their own form; for the rest this now renders
+   nothing rather than something misleading. */
 function conjExample(c){
   var w = c && c.w;
-  if (!w || !w.ex) return "";
-  return '<div class="np">' + esc(w.ex) +
-    (Recorded.srcFor(w.ex) ? sayBtn(w.ex, "inline") : "") + '</div>' +
+  if (!w || !w.ex || !c.p) return "";
+  var re;
+  try {
+    re = new RegExp("(^|[^0-9A-Za-zÀ-ÿ])(" + escapeRe(c.p) + ")([^0-9A-Za-zÀ-ÿ]|$)", "i");
+  } catch (e) { return ""; }
+  if (!re.test(w.ex)) return "";
+  var shown = esc(w.ex).replace(
+    new RegExp("(^|[^0-9A-Za-zÀ-ÿ])(" + escapeRe(esc(c.p)) + ")([^0-9A-Za-zÀ-ÿ]|$)", "i"),
+    function(_, pre, hit, post){ return pre + "<b>" + hit + "</b>" + post; });
+  return '<div class="ne" style="margin:11px 0 5px">' + esc(c.v) +
+      ' numa frase · in a sentence</div>' +
+    '<div class="np">' + shown +
+      (Recorded.srcFor(w.ex) ? sayBtn(w.ex, "inline") : "") + '</div>' +
     (w.exE ? '<div class="ne">' + esc(w.exE) + '</div>' : '');
 }
 
@@ -5448,8 +5498,8 @@ function drillTeach(c){
     if (!t) return "";
     return '<div class="footnote">' +
       '<div class="eyebrow slate" style="margin-bottom:9px">' + esc(t.pt) + ' · ' + esc(t.en) + '</div>' +
-      (c.w && c.w.ex ? '<div class="ne" style="margin-bottom:5px">' + esc(c.v) +
-        ' numa frase · in a sentence</div>' + conjExample(c) : '') +
+      conjTable(c) +
+      conjExample(c) +
       (c.tw ? '<div class="ne" style="margin-top:11px">' + c.tw + '</div>' : '') +
       (c.t ? '<details style="margin-top:9px"><summary class="ne" style="cursor:pointer">' +
         'como se forma · how it is built</summary>' +

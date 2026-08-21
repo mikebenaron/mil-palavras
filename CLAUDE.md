@@ -282,20 +282,33 @@ Three layers now, and all of them are text already in the repo — no new audio:
   of the card while the question is still open. *imperfect* is a grammarian's
   label; "what used to happen, or was going on" is something a learner can act
   on.
-- **the lemma's own example sentence** — `c.w.ex` / `c.w.exE`, the one a person
-  wrote for the vocabulary card. Every conjugation card has one; coverage is
-  100%, and most already have audio in the `examples` set.
+- **the whole tense, with the drilled cell marked** — `conjTable()`. A
+  conjugation is a set of contrasts, and revealing one cell alone teaches the
+  cell rather than the tense: *era* on its own says nothing about *eras / era /
+  éramos / eram*. It rebuilds the paradigm through the same `conjugateAll` +
+  `PLABEL` + `placeClitic` path `buildConjugation()` uses, so the table and the
+  card can never disagree about a form. A person the verb hasn't got renders
+  *— não existe*, which for `haver` is itself the lesson.
 
-  Composed sentences were tried here first and withdrawn. A frame per tense
-  with the conjugated form dropped in ("Antigamente {f} sempre assim") reads
-  well for *falar* and produces rubbish elsewhere, and all of it shipped before
-  a review caught it: *"Hoje sei assim."* and *"Hoje preciso assim."* are not
-  Portuguese, because a manner adverb cannot stand in for a direct object or an
-  obligatory preposition; *"Nessa altura já deitara-me"* is not Portuguese,
-  because **`já` attracts the pronoun forward**; *"É melhor me deitar"* is
-  Brazilian order, because the proclisis those forms carry needs a trigger and
-  "É melhor" is not one. The authored sentence has none of these problems and
-  carries what a frame cannot know — *precisar* arrives with its **de**.
+- **the lemma's example sentence, but only when it contains the drilled form**
+  — `conjExample()`. It used to show it unconditionally, and that was reported,
+  fairly, as ridiculous: a card revealing *vai* illustrated it with *"Vou ao
+  mercado"*, and a pretérito imperfeito card answering *era* showed *"Eu sou
+  português"* — a different person, in a different tense, under a heading
+  reading "in a sentence". Only **3.2% of the 15,154 cards** have a lemma
+  sentence containing their own form; the rest now show nothing rather than
+  something misleading.
+
+  Composed sentences were tried before that and withdrawn. A frame per tense
+  with the form dropped in ("Antigamente {f} sempre assim") reads well for
+  *falar* and produces rubbish elsewhere, and all of it shipped before a review
+  caught it: *"Hoje sei assim."* and *"Hoje preciso assim."* are not Portuguese,
+  because a manner adverb cannot stand in for a direct object or an obligatory
+  preposition; *"Nessa altura já deitara-me"* is not, because **`já` attracts
+  the pronoun forward**; *"É melhor me deitar"* is Brazilian order, because the
+  proclisis those forms carry needs a trigger and "É melhor" is not one.
+  **Don't generate Portuguese here.** Everything on this card is either
+  authored by hand or produced by the conjugator the tests cover.
 
 - **`c.tw` then `c.t`** — what the tense is for, then how the form is built,
   the second folded into a `<details>`. `conjWhy()` returns the two halves

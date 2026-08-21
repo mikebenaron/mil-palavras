@@ -180,19 +180,56 @@ if (await cardScreen("c|dizer|im|3", "review")) {
   check("a conjugation card says what the tense is FOR, on the front",
     /what used to happen/i.test(front), front.split("\n").slice(0, 6).join(" / "));
   const back = await reveal();
-  check("and shows the verb in a real, authored sentence",
-    /O que é que queres dizer|dizer numa frase/i.test(back) || /numa frase/i.test(back),
-    (back.split("\n").filter((l) => /numa frase/i.test(l))[0] || "(no sentence line)"));
-  check("and what the tense is used for",
-    /background of a past scene/i.test(back));
+  check("and what the tense is used for", /background of a past scene/i.test(back));
+}
+
+/* The whole tense, with the cell you were asked for marked. Revealing one cell
+   alone teaches the cell, not the tense. */
+if (await cardScreen("c|ser|im|0", "review")) {
+  await reveal();
+  const table = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll(".cjr")].map((r) => ({
+      who: r.querySelector(".cjp").textContent,
+      form: r.querySelector(".cjf").textContent,
+      on: r.classList.contains("on"),
+    }));
+    return { rows, marked: rows.filter((r) => r.on).map((r) => r.form) };
+  });
+  check("the answer gives the whole paradigm for that tense",
+    table.rows.length === 5 && table.rows.map((r) => r.form).join(" ") === "era eras era éramos eram",
+    table.rows.map((r) => r.form).join(" / "));
+  check("with the cell you were asked for marked, and only that one",
+    table.marked.length === 1 && table.marked[0] === "era", JSON.stringify(table.marked));
+}
+
+/* A verb that hasn't got a person says so, rather than showing a blank. */
+if (await cardScreen("c|haver|si|2", "review")) {
+  const back = await reveal();
+  check("a defective verb shows which persons it hasn't got",
+    /não existe/.test(back) && /houvesse/.test(back));
+}
+
+/* The reported bug: a card answering "vai" illustrated it with "Vou ao
+   mercado" — a different person, and on the imperfect card a different tense
+   entirely. The sentence now appears only when it contains the drilled form. */
+if (await cardScreen("c|ir|p|2", "review")) {
+  const back = await reveal();
+  check("no sentence is shown when it would use a different form",
+    !/numa frase/i.test(back) && !/Vou ao mercado/.test(back));
+}
+if (await cardScreen("c|ir|p|0", "review")) {
+  const back = await reveal();
+  check("but it is shown when the sentence really does use that form",
+    /numa frase/i.test(back) && /Vou ao mercado/.test(back));
 }
 
 /* Escolha is a different renderer, and "in all modes" was the report. */
 if (await cardScreen("c|dizer|im|3", "choice")) {
   const back = await reveal();
-  check("Escolha teaches the same thing",
-    /numa frase/i.test(back) && /background of a past scene/i.test(back),
-    (back.split("\n").filter((l) => /numa frase/i.test(l))[0] || "(no sentence line)"));
+  const rows = await page.evaluate(() => [...document.querySelectorAll(".cjr .cjf")].map((e) => e.textContent));
+  check("Escolha teaches the same thing — 'in all modes' was the report",
+    rows.join(" ") === "dizia dizias dizia dizíamos diziam" && /background of a past scene/i.test(back),
+    rows.join(" / "));
 }
 
 /* The grammar cloze that started this: unanswerable without its English. */
