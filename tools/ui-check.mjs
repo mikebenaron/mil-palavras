@@ -208,7 +208,7 @@ if (await cardScreen("c|ser|im|0", "review")) {
 {
   const sweep = await page.evaluate(() => {
     const M = window.__MP__, box = document.createElement("div");
-    const bad = { none: 0, mark: [], form: [], label: [], threw: [], bold: [] };
+    const bad = { none: 0, mark: [], form: [], label: [], threw: [], bold: [], blank: [] };
     let fired = 0;
     for (const c of M.CARDS.filter((x) => x.c === "conjugacao")) {
       let html;
@@ -227,6 +227,9 @@ if (await cardScreen("c|ser|im|0", "review")) {
         box.innerHTML = ex;
         const b = box.querySelector("b");
         if (!b || b.textContent.toLowerCase() !== c.p.toLowerCase()) bad.bold.push(c.i);
+        // the English must name the verb, not leave the learner a blank
+        const en = box.querySelector(".ne");
+        if (en && /___/.test(en.textContent) && c.v !== "haver") bad.blank.push(c.i);
       }
     }
     return { bad, fired, total: M.CARDS.filter((x) => x.c === "conjugacao").length };
@@ -239,6 +242,8 @@ if (await cardScreen("c|ser|im|0", "review")) {
   check("and every card gets a sentence containing the form it just asked for",
     !b.bold.length && sweep.fired >= sweep.total - 300,
     sweep.fired + " of " + sweep.total + " cards · " + b.bold.length + " showing a different form");
+  check("and the English says the verb rather than leaving a blank",
+    !b.blank.length, b.blank.length + " cards still showing ___");
 }
 
 /* A verb that hasn't got a person says so, rather than showing a blank. */
@@ -253,8 +258,8 @@ if (await cardScreen("c|haver|si|2", "review")) {
    entirely. The sentence now appears only when it contains the drilled form. */
 if (await cardScreen("c|ir|p|2", "review")) {
   const back = await reveal();
-  check("the sentence uses the form the card asked for, not another one",
-    /Hoje vai ao mercado/.test(back) && !/Vou ao mercado/.test(back),
+  check("the sentence uses the form the card asked for, with its English",
+    /Hoje vai ao mercado/.test(back) && /he \/ she goes to the market/.test(back),
     (back.split("\n").filter((l) => /mercado/.test(l))[0] || "(none)"));
 }
 if (await cardScreen("c|ir|p|0", "review")) {

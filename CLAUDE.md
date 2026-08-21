@@ -320,6 +320,18 @@ Three layers now, and all of them are text already in the repo — no new audio:
   and sweeps all 15,154 cards to confirm the sentence contains the form the
   card grades.
 
+  **The English is conjugated too.** It used to read "Today he / she ___ to the
+  market", and the blank was the one word a learner opens the card to find.
+  `enForm()` inflects the lemma's own gloss to the tense and person being
+  drilled — *goes / went / used to go / will go / had gone* — taking the first
+  alternative of "to speak / to talk" and dropping any parenthetical.
+  `EVERB` carries the ~70 English irregulars, including *be*, which needs a
+  form per person (am/are/is), and the ones where the regular rule would give
+  *stoped*, *admited*, *feeded*. `EN_BASE` overrides the sense when the gloss's
+  first meaning fights the complement: *bater* is "to hit / to knock" and its
+  complement is *à porta*, so the English has to say **knock**, not "hit at
+  the door".
+
   No frame for the participle: five verbs store the passive form, which cannot
   follow *ter*, and `TUSE.pp` already shows both real uses by hand.
 
@@ -392,7 +404,7 @@ and the queue behind it — they were written separately, which is how a row
 comes to promise one set and serve another.
 
 ```bash
-node tools/ui-check.mjs      # 35 checks, in a real browser, through the real screens
+node tools/ui-check.mjs      # 36 checks, in a real browser, through the real screens
 ```
 
 That harness serves the working tree and drives it with `?dev=1`, asserting on
