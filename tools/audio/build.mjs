@@ -152,7 +152,8 @@ function trimTail(list) {
 /* Conjugation and grammar drills. Without these, "Tudo" and "Mistura
    aleatória" mix unrecorded cards into a session and the device voice — often
    Brazilian, often the wrong gender — appears mid-drill. */
-const DRILLS = await pinned("drills", await drillTexts(ROOT, MAX_RUNG || undefined));
+const DRILL_TEXTS = await drillTexts(ROOT, MAX_RUNG || undefined);
+const DRILLS = await pinned("drills", DRILL_TEXTS);
 
 /* Individual words as they appear inside passages, so tapping any word in a
    story can play it. Only the ones no other set already covers — the deck and
@@ -215,8 +216,16 @@ if (!PICKED || ONLY_READINGS) {
 if (!PICKED || ONLY_DRILLS) {
   // Indexed by position: the manifest ships the same array, so the app maps
   // text -> audio/d/<i>.mp3 without needing card ids to stay stable.
+  /* --rung N must cap the RECORDING, not just the appending. The pinned list
+     keeps every text ever enumerated — including tenses above the ceiling —
+     so queueing every non-null slot made "--drills --rung 2" record the whole
+     B1/B2 backlog: the exact 12× overspend the no-flag warning exists for,
+     reachable through the documented safe command. Filter to the texts this
+     rung actually asked for; slots and indices are untouched either way. */
+  const want = MAX_RUNG ? new Set(DRILL_TEXTS) : null;
   DRILLS.forEach((t, i) => {
-    const text = t == null ? "" : sayable(t);
+    if (t == null || (want && !want.has(t))) return;
+    const text = sayable(t);
     if (text) jobs.push({ file: path.join(AUDIO, "d", `${i}.mp3`), text });
   });
 }
