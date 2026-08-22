@@ -654,6 +654,118 @@ check("the day's text says why it can't be written, rather than vanishing",
     JSON.stringify(cluster));
 }
 
+/* ---- Ditado never grades what the learner could not hear ----
+   Offline with an uncached clip, dictation used to fall through to the device
+   synth — usually a Brazilian voice — and then grade the transcription against
+   European spelling. */
+{
+  const dict = await page.evaluate(() => {
+    const M = window.__MP__;
+    M.SES = null;
+    const q = M.CARDS.filter((c) => !c.k && c.c === "substantivo").slice(0, 4);
+    M.SES = { mode: "listen", q, i: 0, total: q.length, right: 0, near: 0, wrong: 0,
+              shown: false, answered: false, done: 0, score: null };
+    M.renderSession();
+    const normal = { input: !!document.getElementById("ans"), check: !!document.querySelector("[data-check]") };
+    M.SES.noaudio = true;                       // what the onFail callback does
+    M.renderSession();
+    const blocked = {
+      input: !!document.getElementById("ans"),
+      check: !!document.querySelector("[data-check]"),
+      retry: !!document.querySelector("[data-retryaudio]"),
+      skip: !!document.querySelector("[data-skipaudio]"),
+    };
+    const card = M.SES.q[M.SES.i];
+    const before = { total: M.SES.total, prog: !!M.S.prog[card.i], wrong: M.SES.wrong };
+    document.querySelector("[data-skipaudio]").click();
+    const after = { total: M.SES.total, prog: !!M.S.prog[card.i], wrong: M.SES.wrong,
+                    gone: !M.SES.q.some((c) => c.i === card.i), input: !!document.getElementById("ans") };
+    return { normal, blocked, before, after };
+  });
+  check("Ditado asks for typing when the recording plays",
+    dict.normal.input && dict.normal.check, JSON.stringify(dict.normal));
+  check("but an unreachable recording withdraws the answer box instead of grading the device voice",
+    !dict.blocked.input && !dict.blocked.check && dict.blocked.retry && dict.blocked.skip,
+    JSON.stringify(dict.blocked));
+  check("and skipping an unheard card costs no grade, no lapse, and no phantom review",
+    dict.after.gone && dict.after.wrong === dict.before.wrong && dict.after.prog === dict.before.prog &&
+      dict.after.total === dict.before.total - 1 && dict.after.input,
+    JSON.stringify({ before: dict.before, after: dict.after }));
+}
+
+/* ---- Imersão: every word reachable, tapping teaches, finding grades ---- */
+{
+  const cover = await page.evaluate(() => {
+    const M = window.__MP__;
+    const seen = new Set();
+    let overlap = 0;
+    for (const s of M.STUDIOS) for (const c of M.studioCards(s)) {
+      if (seen.has(c.i)) overlap++;
+      seen.add(c.i);
+    }
+    const words = M.CARDS.filter((c) => !c.k);
+    const missing = words.filter((c) => !seen.has(c.i)).map((c) => c.i);
+    return { words: words.length, covered: seen.size, overlap, missing: missing.slice(0, 8),
+             missingN: missing.length };
+  });
+  check("every vocabulary card belongs to exactly one studio",
+    cover.missingN === 0 && cover.overlap === 0 && cover.covered === cover.words,
+    JSON.stringify(cover));
+
+  const explore = await page.evaluate(() => {
+    const M = window.__MP__;
+    M.go("estudio:corpo");
+    const spots = document.querySelectorAll("[data-spot]").length;
+    const tiles = document.querySelectorAll(".sttile").length;
+    const inStudio = M.studioCards(M.STUDIOS.find((s) => s.k === "corpo")).length;
+    document.querySelector('[data-spot="115"]').dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    return { spots, tiles, inStudio, sel: M.STUDIO && M.STUDIO.sel,
+             word: (document.querySelector(".stword") || {}).textContent,
+             gloss: (document.querySelector(".stgloss") || {}).textContent };
+  });
+  check("the body studio offers every one of its words, as art or as a tile",
+    explore.spots === explore.inStudio, JSON.stringify(explore));
+  check("and tapping a part names it, in Portuguese, with its English under it",
+    explore.sel === 115 && /braço/.test(explore.word || "") && /arm/.test(explore.gloss || ""),
+    JSON.stringify(explore));
+
+  /* Finding is retrieval, so it must reach FSRS — and must refuse to touch a
+     card the learner has not been introduced to yet. */
+  const graded = await page.evaluate(() => {
+    const M = window.__MP__;
+    const cards = M.studioCards(M.STUDIOS.find((s) => s.k === "cores"));
+    const t = M.dayNo();
+    M.S.prog = {};
+    cards.forEach((c) => { M.S.prog[c.i] = { d: t, iv: 3, r: 2, l: 0, s: 3, df: 5 }; });
+    M.go("estudio:cores");
+    document.querySelector('[data-smode="find"]').click();
+    const target = M.STUDIO.target;
+    const before = JSON.stringify(M.S.prog[target.i]);
+    const labelled = [...document.querySelectorAll(".stswl")].some((n) => (n.textContent || "").trim().length > 1);
+    document.querySelector('[data-spot="' + target.i + '"]').dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    return { labelled, right: M.STUDIO.right, ok: !!(M.STUDIO.verdict && M.STUDIO.verdict.ok),
+             before, after: JSON.stringify(M.S.prog[target.i]) };
+  });
+  check("Encontrar hides the labels, or it would be a reading test",
+    graded.labelled === false, JSON.stringify({ labelled: graded.labelled }));
+  check("and a correct find reaches the scheduler like every other practice mode",
+    graded.ok && graded.right === 1 && graded.before !== graded.after,
+    JSON.stringify(graded));
+
+  const unseen = await page.evaluate(() => {
+    const M = window.__MP__;
+    M.S.prog = {};                       // nothing in rotation at all
+    M.STUDIO = null;
+    M.go("estudio:cores");
+    document.querySelector('[data-smode="find"]').click();
+    const target = M.STUDIO.target;
+    document.querySelector('[data-spot="' + target.i + '"]').dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    return { progKeys: Object.keys(M.S.prog).length };
+  });
+  check("but a studio never introduces a word the scheduler hasn't dealt yet",
+    unseen.progKeys === 0, JSON.stringify(unseen));
+}
+
 await B.close();
 server.close();
 
