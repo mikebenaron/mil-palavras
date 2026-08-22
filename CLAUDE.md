@@ -113,14 +113,20 @@ node tools/audio/build.mjs --limit 30    # pilot
 
 Needs `.env` with `AZURE_SPEECH_KEY` and `AZURE_SPEECH_REGION` (currently
 `uksouth`). Free F0 tier: 500k chars/month; existing files are never
-re-requested. **The library is 9,470 clips / 122,412 characters / 402 MiB** —
-measured from `audio/manifest.json`, not estimated. This file used to say 62k
-characters and 185MB, both of which predate the twelve-tense expansion and the
-examples set; anyone budgeting from those numbers is out by 2×.
+re-requested. **The library is 10,620 clips / 450 MiB** — measured from
+`audio/manifest.json`, not estimated (2026-08-22). Every drill form at rung ≤2
+and every current example sentence has a clip; the unrecorded remainder is
+B1/B2 drill forms, which are silent by design.
 
 **Never run `node tools/audio/build.mjs` with no flag.** It requests everything
-missing, which is 135 example sentences *plus* 5,710 unrecorded B1/B2 drill
-forms — 12× the intended spend. Name the set: `--examples`, `--drills`.
+missing — thousands of unrecorded B1/B2 drill forms. Name the set
+(`--examples`, `--drills`) **and the rung**. `--rung N` now caps the
+*recording*, not just the appending: the pinned slot list keeps every text
+ever enumerated, including tenses above the ceiling, and the job loop used to
+queue every non-null slot — so the documented safe command
+(`--drills --rung 2`) was the 12× overspend in disguise. It recorded 919 B1/B2
+clips before being caught; they are keyed to their pinned slots, correct, and
+kept.
 
 `audio/manifest.json` is precached **with a `?v=` like every other shell file**
 — `cache.addAll()` fetches through the browser's HTTP cache, and an unversioned
@@ -431,7 +437,7 @@ and the queue behind it — they were written separately, which is how a row
 comes to promise one set and serve another.
 
 ```bash
-node tools/ui-check.mjs      # 43 checks, in a real browser, through the real screens
+node tools/ui-check.mjs      # 55 checks, in a real browser, through the real screens
 ```
 
 That harness serves the working tree and drives it with `?dev=1`, asserting on
@@ -440,7 +446,7 @@ and it exists because this class of bug is invisible from inside any single
 function: nothing was wrong with `tenseBlocked()`, only with who called it.
 It needs playwright, and when it can't find it, it **exits 2 rather than 0**:
 the other three harnesses exit non-zero on failure, and a loop over the four
-read a silent skip as a pass on any machine without playwright — 43 checks
+read a silent skip as a pass on any machine without playwright — dozens of checks
 reported green having never run. `--allow-skip` / `SKIP_UI_CHECK=1` is the
 way to skip deliberately. It looks for the module in node's own resolution,
 `NODE_PATH`, `npm root -g` and the usual prefixes; it used to look in
@@ -459,6 +465,25 @@ cards, which buries the vocabulary the ladder exists to support.
 
 Asked about repeatedly; get these right:
 
+- **`planQueue()` is the one place the day's queue is chosen.** Selection is
+  deterministic — the same state picks the same cards — so the Hoje panel and
+  the session Começar starts can never disagree; only the order is shuffled
+  (`sessionPlan()` describes it, `startReview()` serves it, ui-check asserts
+  they match card for card). The due deal is stratified **3 palavras : 1
+  conjugação : 1 gramática**, the same ratio `newPool()` has always used for
+  intake, because at ~25 cells per verb an ungoverned backlog turns into a
+  wall of conjugation — reported as "way too many verbs at the level I'm at".
+  Deferred cells simply stay due; FSRS is built for lateness, and the panel
+  says how many verbs were held back. New words get a proportional share of a
+  capped session, at least one, so a backlog can never stop the deck.
+- **`troubleClusters()` names where the misses bunch up** — ≥4 failing cells
+  of one tense, or ≥4 failing words within a 25-id stretch of the deck (the
+  deck is authored in thematic runs, so neighbouring ids are one topic).
+  `remedyBlock()` on Hoje and Memória turns the top cluster into one targeted
+  answer: learn the tense (`guide:<t>`) then drill exactly those cells, or
+  drill the word-run together and read a passage that actually uses them
+  (`bestReading()` scans READINGS for ≥4 of the missed words). Cluster drills
+  run as ordinary review sessions — nothing new touches the scheduler.
 - `S.set.perDay` gates **intake only** (`newAllowance() = perDay − newToday`).
   It caps new cards entering `startReview()`, never the number of reviews.
 - **Flashcards ask two questions, not four.** Rever shows the scheduler's own
@@ -535,6 +560,45 @@ edge-swipe and the Android back button drive it too, and persisted in `S.ui.nav`
 Before it, every screen rendered a back link hard-wired to `home`, so however
 deep you went back was a trapdoor to the top — and iOS discarding a suspended
 PWA meant the restart landed on home as well.
+
+**Every screen that owns the viewport rides the stack, sub-screens included.**
+The reported bug this fixed: "when I go back I often go back to somewhere
+else, or go multiple steps back". Readings, tense-guide pages, verb pages and
+grammar topics were rendered by direct function call, so NAV's top stayed
+their *parent* while they were on screen — the OS gesture popped the parent
+and landed two levels up, disagreeing with the in-app chevron. They now go
+through `go()` with **parameterised keys** — `reading:<id>`, `guide:<tense>`,
+`verb:<verb>`, `topic:<id>` — so the gesture, the chevron and a cold restore
+all rebuild the exact screen. `navBase()` strips the argument; `PLACE_OF` /
+`PICKERS` / `navLabel` all key on the base. `go()` routes through a `ROUTES`
+map and an unknown key lands on home rather than pushing a phantom that
+renders nothing.
+
+Around the stack:
+
+- **History entries carry `{nav, hi}` stamps** (`HI_SEQ`/`HI_CUR`), so
+  popstate can tell back from forward — a forward-swipe used to *pop* and go
+  backward. navBack/navReplace `replaceState` the current entry so a later
+  forward re-enters the screen actually shown.
+- **A back link naming a screen the stack doesn't hold beneath it replaces
+  the top (`navReplace`) instead of pushing** — pushing meant "back" grew the
+  stack and the next gesture returned you to the screen you had just left.
+- **`SESSION_BASES`** (flash/choice/type/listen/review/gender/trouble) marks
+  keys whose route renders or resumes a session. sair pops those (re-entering
+  would bounce straight back in) but *re-renders* a launcher key (a verb page,
+  a tense page, a deck picker) — sair leaves the session, not the place. The
+  popstate handler parks a live session's snapshot exactly like sair, and
+  `bridge.refresh` re-renders `navTop()` instead of the stale `LAST_RENDER`,
+  skipping session keys so a background pull can't start a queue under the
+  reader's feet.
+- **A cold start replays the restored stack into history**, one stamped entry
+  per screen, so the edge-swipe works after iOS discards the PWA — it used to
+  relaunch with a single history entry and an inert gesture.
+
+`tools/ui-check.mjs` asserts all of this through the real screens: both backs
+agree from a tense page and a passage, forward re-enters, a mismatched back
+link doesn't grow the stack, unknown keys land home, and a gesture out of a
+session leaves a resumable snapshot.
 
 **`renderPage` must pass `backNav` through untouched.** It used to do
 `backLink(backNav || "home", …)`, and that `|| "home"` silently defeated the

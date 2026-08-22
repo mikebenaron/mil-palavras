@@ -516,6 +516,144 @@ check("the day's text says why it can't be written, rather than vanishing",
     JSON.stringify(drilled));
 }
 
+/* ---- navigation: the in-app back and the OS gesture must agree ----
+   The reported bug: "when I go back I often go back to somewhere else, or go
+   multiple steps back". Every sub-screen now rides the NAV stack through a
+   parameterised go() key, so both back affordances pop the same entry. */
+{
+  const navState = () => page.evaluate(() => ({ top: window.__MP__.navTop(), depth: window.__MP__.NAV.length }));
+  const settle = (ms = 250) => page.waitForTimeout(ms);
+
+  /* A tense page is on the stack, and the OS gesture returns to the guide. */
+  await page.evaluate(() => { const M = window.__MP__; M.SES = null; M.go("home"); M.go("estudar"); M.go("verbguia"); });
+  await page.click('[data-tg="pp"]');
+  await settle();
+  const onGuide = await navState();
+  await page.goBack(); await settle();
+  const afterBack = await navState();
+  check("a tense page rides the stack under its own key",
+    onGuide.top === "guide:pp", JSON.stringify(onGuide));
+  check("and the OS gesture from it returns to the guide index, not two levels up",
+    afterBack.top === "verbguia", JSON.stringify(afterBack));
+
+  /* A reading is on the stack; back lands on the list, not on home. */
+  await page.evaluate(() => window.__MP__.go("leitura"));
+  await page.click("[data-reading]");
+  await settle();
+  const onReading = await navState();
+  await page.goBack(); await settle();
+  const backToList = await navState();
+  check("a passage rides the stack as reading:<id>",
+    /^reading:/.test(onReading.top), JSON.stringify(onReading));
+  check("and the OS gesture from a passage returns to the reading list, not home",
+    backToList.top === "leitura", JSON.stringify(backToList));
+
+  /* Forward gesture re-enters the screen that was just left. */
+  await page.goForward(); await settle();
+  const fwd = await navState();
+  check("the forward gesture re-enters the passage instead of popping again",
+    /^reading:/.test(fwd.top), JSON.stringify(fwd));
+
+  /* A back link naming a screen the stack doesn't hold replaces, not grows. */
+  const replaced = await page.evaluate(async () => {
+    const M = window.__MP__;
+    M.go("home"); M.go("flash");            // buckets' chevron names "estudar"; the stack holds "home"
+    const before = M.NAV.length;
+    const bl = document.querySelector(".backlink[data-nav]");
+    if (bl) bl.click();
+    return { before, after: M.NAV.length, top: M.navTop() };
+  });
+  await settle();
+  check("a mismatched back link replaces the top of the stack instead of growing it",
+    replaced && replaced.top === "estudar" && replaced.after <= replaced.before,
+    JSON.stringify(replaced));
+
+  /* An unknown key can no longer push a phantom and render nothing. */
+  const phantom = await page.evaluate(() => {
+    const M = window.__MP__;
+    M.go("no-such-screen");
+    return { top: M.navTop(), screen: document.querySelector(".hpanel, [data-screen]") !== null };
+  });
+  check("an unknown nav key lands on home, not on a phantom entry",
+    phantom && phantom.top === "home", JSON.stringify(phantom));
+
+  /* Leaving a live session by gesture keeps its snapshot, like sair. */
+  const snap = await page.evaluate(() => {
+    const M = window.__MP__;
+    delete M.S.ui.ses; M.SES = null;
+    M.go("home"); M.go("review");
+    return { mode: M.SES && M.SES.mode, n: M.SES && M.SES.q.length };
+  });
+  await page.goBack(); await settle();
+  const kept = await page.evaluate(() => ({
+    ses: !!(window.__MP__.S.ui && window.__MP__.S.ui.ses),
+    live: !!window.__MP__.SES, top: window.__MP__.navTop() }));
+  check("the OS gesture out of a session parks a resumable snapshot",
+    snap && snap.mode === "review" && snap.n > 0 && kept.ses,
+    JSON.stringify({ snap, kept }));
+}
+
+/* ---- the panel and the button it describes tell one story ---- */
+{
+  const agree = await page.evaluate(() => {
+    const M = window.__MP__;
+    delete M.S.ui.ses; M.SES = null;
+    const plan = M.sessionPlan();
+    M.go("review");
+    const q = M.SES ? M.SES.q : [];
+    const count = (cs, f) => cs.filter(f).length;
+    return {
+      planned: plan.planned, served: q.length,
+      planVerbs: plan.split.verbs, servedVerbs: count(q, (c) => c.c === "conjugacao"),
+      planWords: plan.split.words, servedWords: count(q, (c) => !["conjugacao", "gramatica"].includes(c.c)),
+    };
+  });
+  check("Hoje's numeral is the queue Começar serves — same size",
+    agree && agree.planned === agree.served, JSON.stringify(agree));
+  check("and the palavras/verbos split is the split actually served",
+    agree && agree.planVerbs === agree.servedVerbs && agree.planWords === agree.servedWords,
+    JSON.stringify(agree));
+
+  /* The verb governor: with a verb-heavy backlog, words still lead the deal. */
+  const governed = await page.evaluate(() => {
+    const M = window.__MP__;
+    delete M.S.ui.ses; M.SES = null;
+    const t = M.dayNo();
+    // fabricate a backlog: 30 due conjugation cells, 10 due words
+    M.S.prog = {};
+    let cj = 0, w = 0;
+    for (const c of M.CARDS) {
+      if (cj < 30 && c.c === "conjugacao" && !c.rf) { M.S.prog[c.i] = { d: t, iv: 3, r: 1, l: 0, s: 3, df: 5 }; cj++; }
+      else if (w < 10 && c.c === "substantivo") { M.S.prog[c.i] = { d: t, iv: 3, r: 1, l: 0, s: 3, df: 5 }; w++; }
+      if (cj >= 30 && w >= 10) break;
+    }
+    const plan = M.planQueue();
+    const q = plan.q.filter((c) => M.S.prog[c.i]);        // the due part of the deal
+    const verbs = q.filter((c) => c.c === "conjugacao").length;
+    return { qLen: q.length, verbs, deferredVerbs: plan.deferred.verbs };
+  });
+  check("a verb-heavy backlog is dealt 3:1:1 — verbs no longer crowd out the words",
+    governed && governed.qLen > 0 && governed.verbs <= Math.ceil(governed.qLen / 3) && governed.deferredVerbs > 0,
+    JSON.stringify(governed));
+
+  /* Clusters: trouble bunched in one tense is named as one problem. */
+  const cluster = await page.evaluate(() => {
+    const M = window.__MP__;
+    const t = M.dayNo();
+    M.S.prog = {};
+    let n = 0;
+    for (const c of M.CARDS) {
+      if (c.c === "conjugacao" && c.tn === "t" && n < 6) { M.S.prog[c.i] = { d: t, iv: 2, r: 1, l: 5, s: 1, df: 7 }; n++; }
+      if (n >= 6) break;
+    }
+    const cl = M.troubleClusters();
+    return cl.length ? { kind: cl[0].kind, id: cl[0].id, n: cl[0].cards.length } : null;
+  });
+  check("six failing cells of one tense surface as a single named cluster",
+    cluster && cluster.kind === "tense" && cluster.id === "t" && cluster.n === 6,
+    JSON.stringify(cluster));
+}
+
 await B.close();
 server.close();
 
