@@ -766,6 +766,108 @@ check("the day's text says why it can't be written, rather than vanishing",
     unseen.progKeys === 0, JSON.stringify(unseen));
 }
 
+/* ---- the verb guide teaches without sending you away ---- */
+{
+  const live = await page.evaluate(() => {
+    const M = window.__MP__;
+    M.go("home"); M.go("guide:p");
+    document.querySelector('[data-gv="falar"]').click();      // switch model verb
+    const key = M.navTop();
+    const card = M.BY_ID["c|falar|p|0"];
+    const t = M.dayNo();
+    M.S.prog = {}; M.S.prog[card.i] = { d: t, iv: 3, r: 2, l: 0, s: 3, df: 5 };
+    const tb = document.querySelector("[data-gvtest]");
+    if (tb.textContent.indexOf("Tapar") >= 0) tb.click();      // cover the forms
+    const blanks = document.querySelectorAll(".gvblank").length;
+    document.querySelector('[data-gvrow="0"]').click();         // reveal eu
+    const revealed = (document.querySelectorAll(".cjr.live .cjf")[0] || {}).textContent;
+    const sentence = (document.querySelector(".gvsent") || {}).textContent || "";
+    const g = document.querySelector('[data-gvg="3"]');
+    const before = JSON.stringify(M.S.prog[card.i]);
+    if (g) g.click();
+    return { key, keyAfter: M.navTop(), blanks, revealed, sentence,
+             graded: !!g, before, after: JSON.stringify(M.S.prog[card.i]) };
+  });
+  check("switching the model verb patches the page instead of navigating",
+    live.key === "guide:p" && live.keyAfter === "guide:p" && live.revealed === "falo",
+    JSON.stringify({ key: live.key, after: live.keyAfter, form: live.revealed }));
+  check("cover-and-try hides the forms until you ask for one",
+    live.blanks > 0, JSON.stringify({ blanks: live.blanks }));
+  check("and a revealed form arrives with the sentence that uses it",
+    /falo/.test(live.sentence), live.sentence.slice(0, 60));
+  check("grading a cell inline reaches FSRS without leaving the page",
+    live.graded && live.before !== live.after, JSON.stringify({ b: live.before, a: live.after }));
+
+  /* The derivation shown must be the one conjugateAll actually performs. */
+  const spine = await page.evaluate(() => {
+    const M = window.__MP__;
+    M.go("home"); M.go("guide:si");
+    document.querySelector('[data-gv="fazer"]').click();
+    return { from: (document.querySelector(".gvfrom") || {}).innerText || "" };
+  });
+  check("a derived tense shows which principal part it grew from, computed not asserted",
+    /fizeram/.test(spine.from) && /fizesse/.test(spine.from) && /eles/.test(spine.from),
+    spine.from.replace(/\n/g, " "));
+
+  /* conjWhy used to be called with a hardcoded irr=false, so every verb was
+     explained as if it were regular. */
+  const irr = await page.evaluate(() => {
+    const M = window.__MP__;
+    M.go("home"); M.go("guide:fu");
+    document.querySelector('[data-gv="dizer"]').click();
+    return (document.querySelector("#gvbody .footnote .ne") || {}).textContent || "";
+  });
+  check("an irregular verb is explained as irregular, not as if it followed the rule",
+    /irregular/i.test(irr), irr.slice(0, 90));
+}
+
+/* ---- practising outside a session must not destroy a parked one ----
+   studyBeat() calls sesRemember(), and sesRemember used to clear S.ui.ses
+   whenever there was no live session to snapshot — so answering one card in a
+   studio threw away a half-finished Rever. */
+{
+  const parked = await page.evaluate(() => {
+    const M = window.__MP__;
+    M.SES = null; M.S.ui = M.S.ui || {}; delete M.S.ui.ses;
+    M.go("home"); M.go("review");                    // start and park a real session
+    const live = M.SES && M.SES.q.length;
+    M.SES.i = 2;
+    M.go("home");                                     // leave it parked
+    const afterPark = !!(M.S.ui && M.S.ui.ses);
+    /* now practise elsewhere: a studio find, which calls studyBeat() */
+    const cards = M.studioCards(M.STUDIOS.find((s) => s.k === "cores"));
+    const t = M.dayNo();
+    cards.forEach((c) => { M.S.prog[c.i] = { d: t, iv: 3, r: 2, l: 0, s: 3, df: 5 }; });
+    M.STUDIO = null;
+    M.go("estudio:cores");
+    document.querySelector('[data-smode="find"]').click();
+    const target = M.STUDIO.target;
+    document.querySelector('[data-spot="' + target.i + '"]').dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    return { live, afterPark, stillParked: !!(M.S.ui && M.S.ui.ses) };
+  });
+  check("a parked review survives practising somewhere else",
+    parked.live > 0 && parked.afterPark && parked.stillParked, JSON.stringify(parked));
+}
+
+/* ---- a reflexive verb keeps its pronoun in the guide's table ---- */
+{
+  const rfx = await page.evaluate(() => {
+    const M = window.__MP__;
+    M.go("home"); M.go("guide:p");
+    const chip = [...document.querySelectorAll("[data-gv]")]
+      .find((c) => /^(rir|deitar|lembrar|tornar|mudar|divertir|aperceber)$/.test(c.getAttribute("data-gv")));
+    if (!chip) return { skipped: true };
+    chip.click();
+    const tb = document.querySelector("[data-gvtest]");      // an earlier check may have left it covered
+    if (tb && tb.textContent.indexOf("Mostrar") >= 0) tb.click();
+    return { verb: chip.getAttribute("data-gv"),
+             forms: [...document.querySelectorAll(".cjr.live .cjf")].map((e) => e.textContent) };
+  });
+  check("a reflexive verb is conjugated with its clitic, not bare",
+    rfx.skipped || rfx.forms.some((f) => /-(me|te|se|nos)\b/.test(f)),
+    JSON.stringify(rfx).slice(0, 140));
+}
+
 await B.close();
 server.close();
 

@@ -375,6 +375,40 @@ Two things are held back from that forgiveness, and both matter:
   and conjugation adds *falamos/falámos*, *ficara/ficará*. Forgiving those would
   teach that the mark is decoration.
 
+## Imersão — the topic studios
+
+Estudar ▸ *Imersão*. **All 1,242 vocabulary cards belong to exactly one of 26
+studios** and `ui-check` asserts the cover is exact with no word in two
+places — a studio is a slice of the deck's own id range, because the deck is
+authored in thematic runs.
+
+Two modes, and the difference is the whole feature:
+
+- **Explorar** taps anything to hear it and see it used. Ungraded.
+- **Encontrar** names one and asks you to find it. That is retrieval, so it
+  feeds FSRS through `practiceGrade` like every other mode — and
+  `practiceGrade`'s own rule means a studio can never introduce a word the
+  scheduler hasn't dealt yet. In Encontrar the labels are **hidden**
+  (`ui-check` asserts it), or it would be a reading test. A picture is asked
+  in Portuguese (word → find it); a tile grid is asked in English (meaning →
+  which word), because the tile already shows the Portuguese.
+
+The art is **inline SVG built from the theme's own custom properties** — no
+image files, nothing fetched, correct in light, dark and night. `o corpo` is a
+figure whose **parts** light up rather than dots scattered over it: tap the arm
+and both arms turn, tap the eye and the eye does. A dot drawn over a face
+hides the very feature the word names, which is why the first attempt was
+wrong. Paired parts highlight together, because *o braço* is either arm.
+
+What a front view cannot honestly show — *o pelo, as costas, o rabo* — becomes
+a tile rather than a lie. `ART_IDS` lists what each scene actually draws and
+`figureBody()` renders a tile for everything else in the range, so adding a
+word to a studio's range can never make it silently disappear.
+
+`studioFor()` links the trouble-cluster remedy to a studio when the missed
+words have one: for the body run that is a diagram, not another lap of the
+same cards.
+
 ## Como funcionam os verbos — the reference section
 
 Estudar ▸ referência ▸ *Como funcionam*. An explainer rather than a drill, and
@@ -389,9 +423,49 @@ asserts the count on every tense page equals the deck's own, tense by tense.
   by ladder rung, each row carrying its gloss, `falar`'s form, and how many
   verbs are irregular in it.
 - A tense page gives what it is for (`TUSE`), how it is built (`conjWhy`'s
-  derivation half) with `falar` / `comer` / `partir` in that tense, who breaks
-  the rule, the reflexive placement for that clitic class, and a button that
-  drills exactly that tense.
+  derivation half), who breaks the rule, the reflexive placement for that
+  clitic class, and a button that drills exactly that tense.
+
+**The page is something you do, not only something you read.** Everything that
+depends on *which* verb is being shown lives in `guideBody()` under `#gvbody`,
+so tapping a verb chip replaces that node alone — the page does not re-render,
+does not scroll, does not lose your place, and the nav key stays `guide:<t>`.
+The chip strip is `falar/comer/partir`, then the big nine, then verbs the
+learner has actually started; the choice persists in `S.ui.gv`.
+
+- **The table is live.** Tap a row to hear the form (`Recorded` first — the
+  speaker glyph appears only where a clip exists, so the page never promises
+  audio it hasn't got) and to see it in a sentence via the same
+  `conjSentence()` the drill card uses.
+- **Cover and try** blanks the forms; revealing one offers *Não sabia · Sabia*,
+  which is the Cartões two-button model — grade 1 or grade 3, never Fácil —
+  through `practiceGrade`, so inline practice cannot invent its own semantics.
+- **`TSOURCE` labels which principal part each tense grows from**, and the
+  page shows the derivation with the shared stem bolded by **measuring the
+  common prefix** (`fizeram → fize|sse`). An irregular that breaks the pattern
+  simply shows no shared stem rather than a fabricated one.
+- The index carries *De onde vem esta forma?* — the three principal parts as
+  an exercise. It is deliberately **ungraded and says so**: there is no deck
+  card behind the question, and quietly feeding the scheduler from a page that
+  is not a session is exactly the class of bug this codebase has been bitten
+  by.
+
+**A drill card's id is built from the WORD card's string** — `c|rir-se|p|0` —
+while its `.v` is the bare verb the conjugator uses, `rir`. They differ for
+exactly the reflexives, so `verbKey()` translates; without it the guide looked
+the cell up under `c|rir|p|0`, found nothing, and printed `rio` for *rir-se*.
+
+**`studyBeat()` calls `sesRemember()`, which used to delete `S.ui.ses`
+whenever there was no live session to snapshot.** Every mode that called it
+was inside a session, so it never showed — until a studio and the verb guide
+began grading cards from outside one, and answering a single card threw away
+a parked Rever. It now only clears the parked queue when a session actually
+exists.
+
+**`conjWhy` was called with a hardcoded `irr=false`**, so every verb on every
+tense page was explained as if it were regular — *dizer* in the futuro got the
+regular rule. It now passes the real flag from `conjugateAll().reg` and the
+current verb; `ui-check` asserts an irregular is described as one.
 
 The count is the teaching. **Futuro and condicional have three irregular verbs
 between them** — *fazer, dizer, trazer*, the `dir- / far- / trar-` stems — and
@@ -437,7 +511,7 @@ and the queue behind it — they were written separately, which is how a row
 comes to promise one set and serve another.
 
 ```bash
-node tools/ui-check.mjs      # 55 checks, in a real browser, through the real screens
+node tools/ui-check.mjs      # 72 checks, in a real browser, through the real screens
 ```
 
 That harness serves the working tree and drives it with `?dev=1`, asserting on
